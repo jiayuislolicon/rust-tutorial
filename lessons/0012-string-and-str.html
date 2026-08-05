@@ -1,0 +1,374 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="UTF-8">
+<title>Lesson 12 · String 與 &amp;str：兩種字串</title>
+<link rel="stylesheet" href="../assets/style.css">
+<script src="../assets/quiz.js"></script>
+</head>
+<body>
+<main>
+
+<div class="kicker">Lesson 0012 · Rust · CLI 工具養成路線</div>
+<h1>String 與 &amp;str：兩種字串</h1>
+<div class="byline">目標：知道這兩種字串型別各自代表什麼，寫函式參數時知道該選哪一個，並且知道為什麼 <code>&amp;str</code> 幾乎總是對的。</div>
+
+<p>
+你現在的程式裡有這一行：
+</p>
+
+<pre><code>fn add_title(content: &amp;mut String, filename: &amp;String) {</code></pre>
+
+<p>
+它能跑，上一課教的也是這樣寫。但 Rust 程式設計師不會這樣寫 <code>filename</code>，他們會寫 <code>&amp;str</code>。
+</p>
+
+<p>
+這一課解釋差在哪，以及為什麼那個差別有意義。
+</p>
+
+<h2>兩種字串</h2>
+
+<p>
+Rust 有兩個字串型別。這不是設計失誤，是兩件不同的事。
+</p>
+
+<pre><code>let owned:  String = String::from("hello");   // 我擁有這串字
+let slice:  &amp;str   = "hello";                 // 我只是看著一串字</code></pre>
+
+<p>
+<code>String</code> 是<strong>擁有者</strong>。它可以增長（<code>push_str</code>），可以被修改，離開作用域時它的記憶體會被釋放。這些你在 Lesson 10 都見過了。
+</p>
+
+<p>
+<code>&amp;str</code> 是<strong>一段字串的視角</strong>。它不擁有任何東西，不能增長。它就是上一課那個 <code>&amp;</code> —— 一個借用。
+</p>
+
+<div class="callout">
+名字本身就在講這件事：<code>&amp;str</code> 開頭那個 <code>&amp;</code> 跟 <code>&amp;String</code> 的 <code>&amp;</code> 是同一個符號、同一個意思。<strong>凡是 <code>&amp;</code> 開頭的都是借用</strong>，都適用上一課的兩條借用規則。
+</div>
+
+<h2>你一直在寫的字面值就是 <code>&amp;str</code></h2>
+
+<pre><code>println!("{}", "直接寫在程式裡的字");
+//              ^^^^^^^^^^^^^^^^^^^^ 這個東西的型別是 &amp;str</code></pre>
+
+<p>
+直接寫在程式碼裡的字串叫<strong>字面值（literal）</strong>。它在編譯時就被烤進執行檔裡了，執行時不需要另外配置記憶體。
+</p>
+
+<p>
+所以它不可能是 <code>String</code> —— <code>String</code> 的內容是執行時才決定的。字面值只能是一個指向執行檔裡某段固定資料的借用，也就是 <code>&amp;str</code>。
+</p>
+
+<h2>關鍵：型別不對稱</h2>
+
+<p>
+這是整課最重要的一段。
+</p>
+
+<p>
+參數寫 <code>&amp;str</code> 的函式，兩種字串都收：
+</p>
+
+<pre><code>fn show(s: &amp;str) {
+    println!("{}", s);
+}
+
+let owned = String::from("我是 String");
+
+show(&amp;owned);        // ✅ &amp;String 也可以
+show("直接寫");       // ✅ 字面值當然可以</code></pre>
+
+<p>
+參數寫 <code>&amp;String</code> 的函式，只收 <code>String</code>：
+</p>
+
+<pre><code>fn show(s: &amp;String) {
+    println!("{}", s);
+}
+
+show("字面值");       // ❌ 編不過</code></pre>
+
+<pre><code>error[E0308]: mismatched types
+ |
+5 |     show("字面值");
+ |     ---- ^^^^^^^^ expected `&amp;String`, found `&amp;str`
+ |
+ = note: expected reference `&amp;String`
+            found reference `&amp;'static str`</code></pre>
+
+<p>
+一邊全收，一邊只收一半。所以選 <code>&amp;str</code> 沒有代價，選 <code>&amp;String</code> 有 —— 你的函式白白拒絕了一整類呼叫端。
+</p>
+
+<div class="callout tip">
+<strong>為什麼 <code>&amp;String</code> 可以自動當 <code>&amp;str</code> 用？</strong>因為 Rust 有一個叫 <strong>deref coercion</strong> 的機制：需要 <code>&amp;str</code> 的地方拿到 <code>&amp;String</code>，編譯器會自動幫你轉。這一課只需要知道它存在、方向是單向的（<code>&amp;String</code> → <code>&amp;str</code>，反過來不行）。名字寫在這裡是為了以後你搜得到。
+</div>
+
+<h2>切一段出來</h2>
+
+<p>
+<code>&amp;str</code> 不只能指向整個字串，也能指向其中一段：
+</p>
+
+<pre><code>let s = String::from("hello world");
+let hello = &amp;s[0..5];      // "hello"
+let world = &amp;s[6..11];     // "world"</code></pre>
+
+<p>
+<code>0..5</code> 是範圍，你在 <a href="0004-loops-and-collections.html">Lesson 4</a> 的 <code>for i in 1..5</code> 見過。用在字串上意思是「取這個範圍裡的那一段」。前面的 <code>&amp;</code> 是借用。
+</p>
+
+<p>
+這裡沒有複製任何資料。<code>hello</code> 和 <code>world</code> 都只是指向 <code>s</code> 裡面的一段。所以它們是借用 —— 只要它們還活著，<code>s</code> 就不能被修改（上一課的規則）。
+</p>
+
+<h2>中文字要小心：範圍數的是 byte</h2>
+
+<p>
+先講一個詞。<strong>byte（位元組）</strong>是記憶體的最小計數單位。上面 <code>[0..5]</code> 數的就是這個單位，不是「字」。
+</p>
+
+<p>
+英文字母剛好一個佔 1 byte，所以 <code>"hello world"</code> 那個例子看起來像在數字。中文不是 —— 一個中文字在 UTF-8 裡佔 <strong>3 bytes</strong>。
+</p>
+
+<p>
+<code>"你好世界"</code> 在記憶體裡實際長這樣：
+</p>
+
+<pre><code>byte 位置   0    1    2    3    4    5    6    7    8    9   10   11
+內容      228  189  160  229  165  189  228  184  150  231  149  140
+          └──── 你 ────┘  └──── 好 ────┘  └──── 世 ────┘  └── 界 ──┘</code></pre>
+
+<p>
+四個字，十二個 byte。所以：
+</p>
+
+<pre><code>let s = String::from("你好世界");
+
+println!("{}", s.len());              // 12  ← byte 數
+println!("{}", s.chars().count());    // 4   ← 字數
+
+println!("{}", &amp;s[0..3]);             // 你    ✅ 切在「你」的邊界
+println!("{}", &amp;s[0..6]);             // 你好  ✅ 切在「好」的邊界
+println!("{}", &amp;s[0..1]);             // 💥 執行時 panic</code></pre>
+
+<p>
+最後那行想拿 byte 0 那一格，但那只是「你」的三分之一。單獨一個 <code>228</code> 不是任何一個字。
+</p>
+
+<p>
+Rust 保證 <code>&amp;str</code> 的內容一定是合法的文字，所以它不會給你半個字，而是當場停下來：
+</p>
+
+<pre><code>byte index 1 is not a char boundary;
+it is inside '你' (bytes 0..3) of `你好世界`</code></pre>
+
+<p>
+<strong>char boundary（字元邊界）</strong>就是上面那張圖裡的 0、3、6、9。切在這些位置合法，切在 1、2、4、5 都會 panic。
+</p>
+
+<div class="callout">
+<strong>結論：不要用索引處理非英文字串。</strong>英文每個位置都是邊界，所以不會出事；中文、日文、韓文、emoji 都會。改用 <code>.chars()</code>。以下是方法清單，不是可以直接執行的程式：
+<pre><code>s.chars().count()                         // 數字數
+s.chars().take(2).collect::&lt;String&gt;()     // 取前兩個字
+for c in s.chars() { }                    // 逐字處理</code></pre>
+</div>
+
+<div class="callout tip">
+<strong>如果你把 <code>s.len();</code> 單獨寫成一行</strong>，會看到 <code>warning: unused return value of `String::len` that must be used</code>。這只是在說「你算出一個值但沒用它，這行等於什麼都沒做」。<code>len()</code> 不印東西也不改東西，它唯一的作用就是回傳數字。想看到數字要包在 <code>println!</code> 裡。
+</div>
+
+<h2>互相轉換</h2>
+
+<pre><code>// &amp;str → String
+let a: String = "abc".to_string();
+let b: String = String::from("abc");
+
+// String → &amp;str
+let s = String::from("abc");
+let c: &amp;str = &amp;s;
+let d: &amp;str = s.as_str();</code></pre>
+
+<p>
+兩個方向的成本差很多。
+</p>
+
+<p>
+往 <code>String</code> 走：向系統<strong>要一塊新記憶體</strong>，再把內容<strong>整份複製</strong>進去。字串越長越慢。
+</p>
+
+<p>
+往 <code>&amp;str</code> 走：只是記下「那串字在哪裡」。資料一個 byte 都沒動，所以不管字串是 3 個字還是 300 萬個字，做的事都一樣多。
+</p>
+
+<div class="callout tip">
+<strong>實用判斷法：</strong>
+<ul>
+<li>函式<strong>參數</strong> → 幾乎都用 <code>&amp;str</code></li>
+<li>函式<strong>回傳值</strong>、struct 欄位、需要保存下來的東西 → 用 <code>String</code></li>
+<li>需要修改內容 → <code>&amp;mut String</code></li>
+</ul>
+</div>
+
+<h2>為什麼回傳值不能用 <code>&amp;str</code></h2>
+
+<p>
+上面那三條不是慣例，每一條背後都有編譯器擋著。先看回傳值：
+</p>
+
+<pre><code>fn make_title(name: &amp;str) -&gt; &amp;str {
+    let s = format!("=== {} ===", name);
+    &amp;s                                    // 想把 s 借出去
+}</code></pre>
+
+<pre><code>error[E0515]: cannot return reference to local variable `s`
+ |
+3 |     &amp;s
+ |     ^^ returns a reference to data owned by the current function</code></pre>
+
+<p>
+<code>s</code> 是這個函式裡的區域變數。函式一結束，<code>s</code> 離開作用域，字串被釋放（Lesson 10 第三條規則）。你回傳的那個引用會指向一塊已經沒了的記憶體。
+</p>
+
+<p>
+所以要把新造的字串交出去，只有一條路：<strong>交出所有權</strong>。
+</p>
+
+<pre><code>fn make_title(name: &amp;str) -&gt; String {
+    format!("=== {} ===", name)           // ✅ 所有權移交給呼叫端
+}</code></pre>
+
+<p>
+參數和回傳值的差別在這裡：
+</p>
+
+<pre><code>傳進函式    借用 ✅   值在呼叫端，活得比函式久
+傳出函式    借用 ❌   值在函式裡，函式結束就死了</code></pre>
+
+<h2>為什麼 struct 欄位建議用 <code>String</code></h2>
+
+<pre><code>struct Note {
+    title: &amp;str,
+}</code></pre>
+
+<pre><code>error[E0106]: missing lifetime specifier
+ |
+2 |     title: &amp;str,
+ |            ^ expected named lifetime parameter
+help: consider introducing a named lifetime parameter
+ |
+1 ~ struct Note&lt;'a&gt; {
+2 ~     title: &amp;'a str,</code></pre>
+
+<p>
+注意編譯器沒有說「不行」，它說「你得再標一個東西」。
+</p>
+
+<p>
+原因是：如果 <code>Note</code> 裡面裝的是借用，Rust 必須確保 <code>Note</code> 不會活得比它借的那個字串久 —— 否則又是指向已釋放的記憶體。那個 <code>&lt;'a&gt;</code> 就是你用來做出這個承諾的標記。
+</p>
+
+<p>
+這件事本身很合理，但它是另一整課的份量（那個機制叫 <strong>lifetime</strong>）。用 <code>String</code> 就完全不需要：struct 自己擁有那份字串，沒有「誰先死」的問題。
+</p>
+
+<p>
+所以這條準確的說法是：<strong>能用 <code>String</code> 就用，避開一個你還沒學的東西。</strong>等你真的需要省掉那份複製，再回來學 lifetime。
+</p>
+
+<h2>為什麼修改一定是 <code>&amp;mut String</code></h2>
+
+<pre><code>let s: &amp;str = "hello";
+s.push_str(" world");</code></pre>
+
+<pre><code>error[E0599]: no method named `push_str` found for reference `&amp;str`</code></pre>
+
+<p>
+這不是權限問題，是<strong>能力問題</strong>。<code>&amp;str</code> 是一段固定長度的視角，它沒有增長的機制，所以 <code>push_str</code>、<code>insert_str</code>、<code>clear</code> 這些方法根本不存在於 <code>&amp;str</code> 上。
+</p>
+
+<p>
+「要修改」自動就把你逼到 <code>String</code>。剩下的問題只是要不要把所有權拿過來：
+</p>
+
+<pre><code>fn add_line(s: String)        // 拿走，呼叫端不能再用
+fn add_line(s: &amp;mut String)  // 借來改，呼叫端還能用   ← 通常要的是這個</code></pre>
+
+<p>
+<code>&amp;mut</code> 就是「要修改」和「不想拿走」這兩個需求的交集。
+</p>
+
+<div class="quiz" data-mcq data-answer="2">
+<div class="q">小測驗一：為什麼函式參數該優先寫 <code>&amp;str</code> 而不是 <code>&amp;String</code>？</div>
+<div class="choices">
+<button>因為 &amp;str 比較短，函式執行起來也比較快一點</button>
+<button>因為 &amp;str 兩種字串都收得下，&amp;String 收不了字面值</button>
+<button>因為 &amp;String 已經被淘汰了，新版本編譯器會警告</button>
+</div>
+<div class="feedback"
+     data-ok="對。&amp;String 的參數會讓 show(&quot;字面值&quot;) 編不過（mismatched types）。&amp;str 沒有這個限制，所以選它沒有任何代價。"
+     data-bad="想想那段 mismatched types 的錯誤：是哪一種參數型別會拒絕呼叫端？"></div>
+</div>
+
+<div class="quiz" data-mcq data-answer="3">
+<div class="q">小測驗二：<code>let s = String::from("你好");</code> 之後，<code>s.len()</code> 和 <code>s.chars().count()</code> 分別是多少？</div>
+<div class="choices">
+<button>len() 是 2，chars().count() 是 2</button>
+<button>len() 是 2，chars().count() 是 6</button>
+<button>len() 是 6，chars().count() 是 2</button>
+</div>
+<div class="feedback"
+     data-ok="對。len() 數 byte，兩個中文字共 6 個 byte。chars().count() 數字元，所以是 2。"
+     data-bad="兩個方法數的單位不一樣。回去看那張 byte 位置圖：一個中文字佔幾格？"></div>
+</div>
+
+<div class="quiz" data-text data-accept='["chars"]'>
+<div class="q">小測驗三：要正確數出一個含中文的字串有幾個<strong>字</strong>，該用 <code>s.____().count()</code> 裡的哪個方法？（英文，5 個字母）</div>
+<input type="text" id="q3" placeholder="你的答案">
+<button>檢查</button>
+<div class="feedback"
+     data-ok="對，chars()。它逐個字元走過字串，而 len() 只是回報位元組數。"
+     data-bad="提示：你要的是「逐個字元」，答案就是英文的「字元」複數形。"></div>
+</div>
+
+<h2>換你動手</h2>
+
+<p>
+這次是一個小重構，不會新增功能。
+</p>
+
+<div class="callout">
+<strong>三個步驟：</strong>
+<ul>
+<li>把 <code>add_title</code> 的 <code>filename: &amp;String</code> 改成 <code>filename: &amp;str</code>。呼叫端<strong>一個字都不用改</strong> —— 想清楚為什麼。</li>
+<li>加一個 <code>fn line_count(text: &amp;str) -&gt; usize</code>，回傳行數，在印出內容前先印「共 N 行」。注意回傳的是 <code>usize</code> 而不是字串，所以不涉及所有權。</li>
+<li>然後<strong>故意做錯</strong>：在 <code>main</code> 裡直接呼叫 <code>line_count("a\nb")</code>，接著把參數型別改回 <code>&amp;String</code> 再跑一次。你應該看到 <code>expected `&amp;String`, found `&amp;str`</code>。改回 <code>&amp;str</code> 收工。</li>
+</ul>
+</div>
+
+<p>
+成功條件：<code>cargo run -- notes.txt</code> 印出行數、標題行、三行內容，而且三條路徑都不 panic。
+</p>
+
+<div class="win">
+<div class="kicker">這一課的成果</div>
+你不會再被 Rust 有兩種字串搞混了。而且你現在寫函式簽名的預設值是對的：參數用 <code>&amp;str</code>，回傳值和保存用 <code>String</code>。這個習慣會一路跟著你到 struct 設計和 backend service —— 那時候一個 <code>&amp;String</code> 參數會讓整條呼叫鏈都得先建 <code>String</code>，代價比現在明顯得多。速查表：<a href="../reference/string-types.html">字串型別參考卡</a>。
+</div>
+
+<p class="source">
+主要參考資料：<a href="https://doc.rust-lang.org/book/ch04-03-slices.html" target="_blank">The Rust Programming Language — 4.3 The Slice Type</a>（繁中版：<a href="https://rust-lang.tw/book-tw/ch04-03-slices.html" target="_blank">rust-lang.tw</a>）。UTF-8 那部分見 <a href="https://doc.rust-lang.org/book/ch08-02-strings.html" target="_blank">8.2 Storing UTF-8 Encoded Text with Strings</a>，它把「為什麼 Rust 不讓你用索引取字元」講得很完整。
+</p>
+
+<nav class="lesson-links">
+<a href="0011-borrowing-and-references.html">&larr; 上一課：Borrowing：看，但不拿走</a>
+<span>下一課：struct 與自訂型別 &rarr;</span>
+</nav>
+
+<p class="ask-agent">卡住了、或有任何看不懂的地方，直接問我（你的 AI 教學助手）就好 —— 隨時可以打斷這個流程提問。</p>
+
+</main>
+</body>
+</html>

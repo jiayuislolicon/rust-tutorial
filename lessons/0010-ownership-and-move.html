@@ -1,0 +1,284 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="UTF-8">
+<title>Lesson 10 · Ownership：值只有一個主人</title>
+<link rel="stylesheet" href="../assets/style.css">
+<script src="../assets/quiz.js"></script>
+</head>
+<body>
+<main>
+
+<div class="kicker">Lesson 0010 · Rust · CLI 工具養成路線</div>
+<h1>Ownership：值只有一個主人</h1>
+<div class="byline">目標：看懂 <code>value borrowed here after move</code> 這個錯誤，知道它為什麼發生，並修好它。</div>
+
+<p>
+這一課要處理一個你遲早會撞到的編譯錯誤。它背後是 Rust 最核心的機制，叫 ownership（所有權）。
+</p>
+
+<p>
+內容分兩課。這課講「移動」。下一課講「借用」，也就是你一直在寫的那個 <code>&amp;</code>。
+</p>
+
+<h2>一個會讓你意外的錯誤</h2>
+
+<pre><code>let s1 = String::from("notes.txt");
+let s2 = s1;
+println!("{}", s1);</code></pre>
+
+<p>
+這段程式在大多數語言裡都能跑。Rust 編譯不過：
+</p>
+
+<pre><code>error[E0382]: borrow of moved value: `s1`
+  |
+2 |     let s1 = String::from("notes.txt");
+  |         -- move occurs because `s1` has type `String`,
+  |            which does not implement the `Copy` trait
+3 |     let s2 = s1;
+  |              -- value moved here
+4 |     println!("{}", s1);
+  |                    ^^ value borrowed here after move</code></pre>
+
+<p>
+注意 <strong>move</strong> 這個字。<code>let s2 = s1;</code> 做的不是複製，是把字串<strong>交給</strong> <code>s2</code>。
+</p>
+
+<p>
+字串本身沒有搬動，也沒有被清空。改變的只有一件事：誰擁有它。
+</p>
+
+<p>
+而交出去之後，<code>s1</code> 就不能再用了。
+</p>
+
+<h2>先講一個詞：作用域</h2>
+
+<p>
+要理解上面那個規則，需要先知道變數什麼時候會消失。
+</p>
+
+<pre><code>fn main() {
+    {
+        let s = String::from("hi");
+        println!("{}", s);      // 這裡可以用 s
+    }
+    println!("{}", s);          // 錯誤：s 已經不在了
+}</code></pre>
+
+<pre><code>error[E0425]: cannot find value `s` in this scope</code></pre>
+
+<p>
+<strong>作用域</strong>就是一個變數存在的範圍。通常就是包住它的那對大括號 <code>{ }</code>。執行離開那對大括號，變數就消失。
+</p>
+
+<p>
+變數消失的時候，它的字串內容也會被清掉，那塊記憶體交還給系統。這個動作叫<strong>釋放</strong>。
+</p>
+
+<p>
+你不需要寫任何程式碼去叫它釋放。Rust 自動做。這就是 Rust 不需要垃圾回收（GC）的原因。
+</p>
+
+<h2>三條規則</h2>
+
+<div class="callout">
+<ul>
+<li>每一個值都有一個<strong>擁有者（owner）</strong>。</li>
+<li>同一時間只能有<strong>一個</strong>擁有者。</li>
+<li>擁有者離開作用域時，值就被釋放。</li>
+</ul>
+</div>
+
+<p>
+第二條看起來很嚴格。它為什麼必須存在？
+</p>
+
+<p>
+假設 Rust 允許 <code>s1</code> 和 <code>s2</code> 同時擁有同一份字串。
+</p>
+
+<p>
+執行離開大括號時，兩個變數都會消失。按照第三條規則，兩個都會去釋放那份字串。同一塊記憶體被釋放了兩次。
+</p>
+
+<p>
+這在 C 和 C++ 裡是一類很有名的 bug，叫 double free。結果是程式崩潰，或是變成安全漏洞。
+</p>
+
+<p>
+Rust 的解法很直接：交出去之後，原本的變數就不能用。所以永遠不會有第二次釋放。
+</p>
+
+<h2>數字為什麼不一樣</h2>
+
+<pre><code>let n1 = 5;
+let n2 = n1;
+println!("n1 = {}, n2 = {}", n1, n2);   // 兩個都能用</code></pre>
+
+<p>
+這段完全合法。整數不會被移動，會被複製。
+</p>
+
+<p>
+原因寫在前面那個錯誤訊息裡：<code>does not implement the Copy trait</code>。
+</p>
+
+<p>
+Rust 的規則只有一條：型別上有 <code>Copy</code> 這個標記，賦值時就是複製。沒有，就是移動。
+</p>
+
+<div class="callout">
+<strong><code>trait</code> 是什麼？</strong>可以先想成「這個型別具備某種能力」的標記。之後有專門一課講它。現在只需要記住上面那一條規則。
+</div>
+
+<p>
+哪些型別有這個標記？
+</p>
+
+<pre><code>// 有 Copy
+i32  i64  u8  usize      // 各種整數
+f64  f32                 // 浮點數
+bool                     // true / false
+char                     // 單一字元
+
+// 沒有 Copy
+String
+Vec&lt;T&gt;</code></pre>
+
+<p>
+分界線不是「整數 vs 其他」。是<strong>大小固定 vs 可以增長</strong>。
+</p>
+
+<p>
+<code>i32</code> 永遠佔 4 bytes，編譯時就知道。複製一份幾乎不花時間，所以 Rust 直接幫你做。
+</p>
+
+<p>
+<code>String</code> 的長度要到執行時才知道，可能 3 個字，也可能 300 萬個字。複製它要另外要一塊記憶體，再把整份內容搬過去。
+</p>
+
+<p>
+Rust 不會偷偷幫你做這種昂貴的事。要複製字串，你得自己寫出來。
+</p>
+
+<h2>函式呼叫也會移動</h2>
+
+<p>
+這才是你實際寫程式時真正會踩到的地方：
+</p>
+
+<pre><code>fn show(name: String) {
+    println!("處理 {}", name);
+}
+
+fn main() {
+    let filename = String::from("notes.txt");
+    show(filename);
+    println!("再用一次 {}", filename);   // ← 編譯錯誤
+}</code></pre>
+
+<p>
+把 <code>filename</code> 傳進 <code>show</code>，所有權就交給參數 <code>name</code> 了。
+</p>
+
+<p>
+<code>show</code> 執行完，<code>name</code> 離開作用域，字串被釋放。
+</p>
+
+<p>
+回到 <code>main</code> 的時候，字串已經沒了。所以 <code>filename</code> 不能再用。錯誤訊息跟前面那個一模一樣：<code>value borrowed here after move</code>。
+</p>
+
+<h2>兩種修法</h2>
+
+<p>
+第一種是 <code>clone</code>，明確地複製一份給函式：
+</p>
+
+<pre><code>show(filename.clone());
+println!("再用一次 {}", filename);   // ✅ 可以編譯</code></pre>
+
+<p>
+這樣能跑，但它真的複製了一整份字串。Rust 要你把這個成本寫出來，而不是替你藏起來。
+</p>
+
+<p>
+第二種是<strong>借用</strong>。編譯器其實已經在提示你了：
+</p>
+
+<pre><code>note: consider changing this parameter type in function `show`
+      to borrow instead if owning the value isn't necessary</code></pre>
+
+<p>
+<code>show</code> 只是把字串印出來，它不需要擁有這個字串。這種情況就該用 <code>&amp;</code>。
+</p>
+
+<p>
+這是下一課的主題。也是你從 Lesson 4 一直在寫、但還沒解釋過的那個符號。
+</p>
+
+<div class="quiz" data-mcq data-answer="2">
+<div class="q">小測驗一：<code>let s1 = String::from("hi"); let s2 = s1;</code> 之後，<code>s1</code> 怎麼了？</div>
+<div class="choices">
+<button>被清空了，現在內容是空字串</button>
+<button>已經失效了，不能再拿來使用</button>
+<button>還能用，它和 s2 各有一份資料</button>
+</div>
+<div class="feedback"
+     data-ok="對。所有權移交給 s2 了。字串資料沒有被複製也沒有被清空，只是 s1 不再是它的擁有者。"
+     data-bad="再看一次錯誤訊息的最後一行：value borrowed here after move。move 之後的 s1 處於什麼狀態？"></div>
+</div>
+
+<div class="quiz" data-text data-accept='["Copy"]'>
+<div class="q">小測驗二：<code>let n2 = n1;</code>（<code>n1</code> 是 <code>i32</code>）之後 <code>n1</code> 還能用。因為整數有哪個標記？（英文，4 個字母）</div>
+<input type="text" id="q2" placeholder="你的答案">
+<button>檢查</button>
+<div class="feedback"
+     data-ok="對，Copy。這個字就寫在 E0382 的錯誤訊息裡：does not implement the Copy trait。"
+     data-bad="提示：答案直接出現在這一課的錯誤訊息裡，就在 does not implement the ___ trait 這句。"></div>
+</div>
+
+<h2>換你動手</h2>
+
+<p>
+這次要你<strong>故意製造錯誤</strong>，再修好它。認得出錯誤比背得出規則有用。
+</p>
+
+<p>在 <code>hello_cli/src/main.rs</code> 加一個函式：</p>
+
+<pre><code>fn summarize(content: String) {
+    println!("共 {} 行", content.lines().count());
+}</code></pre>
+
+<p>然後在讀檔成功的那條分支裡呼叫它，並且在呼叫之後再印一次 <code>content</code>。</p>
+
+<div class="callout">
+<strong>三個步驟：</strong>
+<ul>
+<li>先寫成 <code>summarize(content)</code>，跑 <code>cargo run -- notes.txt</code>。你應該看到 <code>borrow of moved value</code>。停下來把整個錯誤訊息讀完，確認你能指出哪一行是 <code>value moved here</code>。</li>
+<li>用 <code>clone</code> 修好，讓它印出行數和內容。</li>
+<li>想一下：<code>summarize</code> 真的需要擁有這個字串嗎？（答案在下一課。）</li>
+</ul>
+</div>
+
+<div class="win">
+<div class="kicker">這一課的成果</div>
+你能看懂 <code>borrow of moved value</code> 了。這是 Rust 初學者撞最多次的錯誤（代號 <code>E0382</code>，查資料時用得上）。它不是 bug，是 Rust 保證記憶體安全的機制正在運作。你也知道了為什麼 Rust 程式裡 <code>clone</code> 到處都是：因為 Rust 拒絕偷偷幫你做昂貴的複製。
+</div>
+
+<p class="source">
+主要參考資料：<a href="https://doc.rust-lang.org/book/ch04-01-what-is-ownership.html" target="_blank">The Rust Programming Language — 4.1 What is Ownership?</a>（繁中版：<a href="https://rust-lang.tw/book-tw/ch04-01-what-is-ownership.html" target="_blank">rust-lang.tw</a>）。這一章值得完整讀一遍，裡面的 stack / heap 圖示很有幫助。想做練習題可以搭配 <a href="https://github.com/rust-lang/rustlings" target="_blank">Rustlings</a> 的 <code>move_semantics</code> 系列。
+</p>
+
+<nav class="lesson-links">
+<a href="0009-option-and-absent-values.html">&larr; 上一課：Option 與缺席的值</a>
+<a href="0011-borrowing-and-references.html">下一課：Borrowing：看，但不拿走 &rarr;</a>
+</nav>
+
+<p class="ask-agent">卡住了、或有任何看不懂的地方，直接問我（你的 AI 教學助手）就好 —— 隨時可以打斷這個流程提問。</p>
+
+</main>
+</body>
+</html>

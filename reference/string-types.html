@@ -1,0 +1,109 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="UTF-8">
+<title>Reference · 字串型別</title>
+<link rel="stylesheet" href="../assets/style.css">
+</head>
+<body>
+<main>
+<div class="kicker">Reference · 速查表</div>
+<h1>String 與 &amp;str</h1>
+
+<h2>兩者的差別</h2>
+<pre><code>String        擁有內容、可增長、離開作用域時釋放
+&amp;str          借用一段字、不能增長、不擁有任何東西
+
+"字面值"       型別是 &amp;str（編譯時烤進執行檔）</code></pre>
+
+<h2>寫函式簽名時選哪個</h2>
+<pre><code>參數，只要讀      → &amp;str          ← 預設就選這個
+參數，需要修改    → &amp;mut String
+回傳值            → String
+struct 欄位       → String
+需要保存下來      → String</code></pre>
+
+<h2>三條的理由（都有編譯器擋著）</h2>
+<pre><code>回傳值不能用 &amp;str
+  → 借用的來源是函式裡的區域變數，函式結束就被釋放
+  → error[E0515]: cannot return reference to local variable
+  → 唯一的路是交出所有權，也就是回傳 String
+
+struct 欄位建議用 String
+  → 用 &amp;str 不是不行，但要多標一個 lifetime
+  → error[E0106]: missing lifetime specifier
+    help: consider introducing a named lifetime parameter
+  → String 讓 struct 自己擁有內容，沒有「誰先死」的問題
+
+修改一定要 String
+  → &amp;str 上根本沒有 push_str / insert_str / clear
+  → error[E0599]: no method named `push_str` found for reference `&amp;str`
+  → 這是能力問題，不是權限問題
+  → 再加上「不想拿走所有權」→ 所以是 &amp;mut String</code></pre>
+
+<h2>為什麼參數要用 &amp;str</h2>
+<pre><code>fn f(s: &amp;str)      f(&amp;owned)  ✅    f("字面值")  ✅
+fn f(s: &amp;String)   f(&amp;owned)  ✅    f("字面值")  ❌
+
+❌ 的訊息：expected `&amp;String`, found `&amp;str`
+
+&amp;str 全收，&amp;String 只收一半。選 &amp;str 沒有代價。
+（&amp;String 能當 &amp;str 用是 deref coercion，方向單向。）</code></pre>
+
+<h2>互相轉換</h2>
+<pre><code>// &amp;str → String（配置一塊新記憶體 + 整份複製，字串越長越慢）
+"abc".to_string()
+"abc".to_owned()
+String::from("abc")
+
+// String → &amp;str（只記下位置，資料不動，長度無關）
+&amp;s
+s.as_str()</code></pre>
+
+<h2>切片</h2>
+<pre><code>let s = String::from("hello world");
+&amp;s[0..5]     // "hello" — 不複製，只是指向 s 裡的一段
+&amp;s[6..11]    // "world"
+
+切片是借用 → 只要切片還活著，s 就不能被修改。</code></pre>
+
+<h2>UTF-8：索引數的是 bytes</h2>
+<pre><code>let s = String::from("你好世界");
+
+s.len()               // 12  ← bytes，不是字數
+s.chars().count()      // 4   ← 字數
+&amp;s[0..1]              // 執行時 panic
+
+panic 訊息：
+byte index 1 is not a char boundary;
+it is inside '你' (bytes 0..3) of `你好世界`
+
+規則：要逐字處理或數字數，一律用 .chars()，不要用索引。
+ASCII 以外的字元，索引切片隨時可能 panic。</code></pre>
+
+<h2>常用方法</h2>
+<pre><code>// 兩種型別都有（&amp;str 上的方法 String 也能用）
+.len()                 bytes 數
+.chars()               逐字元的 iterator
+.lines()               逐行的 iterator
+.trim()                去頭尾空白 → &amp;str
+.split(',')            切開 → iterator of &amp;str
+.contains("x")         是否包含
+.starts_with("x")      是否開頭是
+.to_uppercase()        → String（新配置一份）
+.parse::&lt;i32&gt;()        → Result&lt;i32, _&gt;
+
+// 只有 String 有（需要修改 → 需要 &amp;mut）
+.push_str("x")         接到尾端
+.push('c')             接一個字元
+.insert_str(0, "x")    插入到指定位置
+.clear()               清空</code></pre>
+
+<p class="source">
+來源：<a href="https://doc.rust-lang.org/book/ch04-03-slices.html" target="_blank">The Rust Book — 4.3 The Slice Type</a>、<a href="https://doc.rust-lang.org/book/ch08-02-strings.html" target="_blank">8.2 Storing UTF-8 Encoded Text with Strings</a>（繁中版：<a href="https://rust-lang.tw/book-tw/ch04-03-slices.html" target="_blank">rust-lang.tw</a>）。API 細節見 <a href="https://doc.rust-lang.org/std/string/struct.String.html" target="_blank">std::string::String</a> 與 <a href="https://doc.rust-lang.org/std/primitive.str.html" target="_blank">primitive str</a>。
+對應課程：<a href="../lessons/0012-string-and-str.html">Lesson 12 · String 與 &amp;str</a>。相關：<a href="ownership-and-borrowing.html">所有權與借用參考卡</a>。
+</p>
+
+</main>
+</body>
+</html>

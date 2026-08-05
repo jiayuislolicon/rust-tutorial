@@ -1,0 +1,117 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="UTF-8">
+<title>Lesson 6 · match 與正式的錯誤處理</title>
+<link rel="stylesheet" href="../assets/style.css">
+</head>
+<body>
+<main>
+
+<div class="kicker">Lesson 0006 · Rust · CLI 工具養成路線</div>
+<h1>match 與正式的錯誤處理</h1>
+<div class="byline">目標：能用 <code>match</code> 拆開 <code>Result</code>，讓程式在輸入錯誤時「妥善處理」而不是直接當掉。</div>
+
+<p>
+上一課用 <code>.expect(...)</code> 先讓程式動起來 —— 代價是使用者只要打錯格式，程式就整個當掉。真正的 CLI 工具不該這樣：使用者打錯，應該印出友善訊息、讓他們重打，而不是崩潰。這一課補上這塊。
+</p>
+
+<h2>回顧：<code>Result</code> 長什麼樣子</h2>
+<p>
+<code>Result</code> 是一個<strong>枚舉（enum）</strong>，只有兩種可能的形式（variant）：
+</p>
+<pre><code>enum Result&lt;T, E&gt; {
+    Ok(T),   // 成功，裡面裝著結果
+    Err(E),  // 失敗，裡面裝著錯誤資訊
+}</code></pre>
+<p>
+<code>.parse()</code> 回傳的就是這種型別 —— <code>.expect(...)</code> 其實是「如果是 <code>Err</code>，就當掉並印訊息；如果是 <code>Ok</code>，把裡面的值拿出來」的捷徑寫法。</p>
+
+<h2>用 <code>match</code> 自己拆開它</h2>
+<pre><code>use std::io;
+
+fn main() {
+    println!("請輸入你的年齡：");
+
+    let mut input = String::new();
+    io::stdin().read_line(&mut input).expect("讀取輸入失敗");
+
+    match input.trim().parse::&lt;i32&gt;() {
+        Ok(age) =&gt; println!("明年你 {} 歲", age + 1),
+        Err(_) =&gt; println!("這不是一個有效的數字，請重新執行程式並輸入數字。"),
+    }
+}</code></pre>
+
+<div class="callout">
+<strong>逐行拆解：</strong>
+<ul>
+<li><code>match</code> 後面接一個表達式（這裡是 <code>.parse::&lt;i32&gt;()</code> 的結果），依它<strong>實際是哪個 variant</strong> 走不同分支。</li>
+<li><code>Ok(age) =&gt; ...</code>：如果是 <code>Ok</code>，把裡面裝的值取出來、綁定成 <code>age</code>，這一分支才能用。</li>
+<li><code>Err(_) =&gt; ...</code>：如果是 <code>Err</code>，<code>_</code> 代表「這裡有一個值，但我不在乎裡面裝什麼」，直接印出自訂的錯誤訊息。</li>
+<li><strong>兩個分支必須涵蓋所有可能</strong> —— 少寫一個 variant，編譯器會直接報錯拒絕編譯。這跟 Lesson 3 的 <code>if</code>/<code>else</code> 表達式很像，但 <code>match</code> 更嚴格：它會幫你確認每一種可能都被處理到了。</li>
+</ul>
+</div>
+
+<h2>結合迴圈：錯誤就重問一次</h2>
+<p>把 Lesson 4 的 <code>loop</code> 概念和這裡的 <code>match</code> 合起來，就能做到「打錯就重問，打對就往下走」：</p>
+<pre><code>use std::io;
+
+fn main() {
+    let age: i32 = loop {
+        println!("請輸入你的年齡：");
+        let mut input = String::new();
+        io::stdin().read_line(&mut input).expect("讀取輸入失敗");
+
+        match input.trim().parse() {
+            Ok(n) =&gt; break n,
+            Err(_) =&gt; println!("不是有效的數字，再試一次。"),
+        }
+    };
+
+    println!("明年你 {} 歲", age + 1);
+}</code></pre>
+<p>
+<code>loop</code> 是一個沒有結束條件、會無限重複的迴圈；<code>break n</code> 除了跳出迴圈，還把 <code>n</code> 當成整個 <code>loop</code> 表達式的值 —— 這跟 <code>if</code>/<code>else</code> 能當表達式是同一個道理。打錯的話沒有 <code>break</code>，就會回到迴圈開頭再問一次。
+</p>
+
+<div class="quiz">
+<div class="q">小測驗：<code>match</code> 的分支如果沒有涵蓋 <code>Result</code> 的所有 variant（例如只寫了 <code>Ok</code>，沒寫 <code>Err</code>），會發生什麼事？（用 3 個字回答，例如「會編譯錯」或「正常執行」這種長度）</div>
+<input type="text" id="q1" placeholder="你的答案">
+<button onclick="checkQ1()">檢查</button>
+<div class="feedback" id="q1-feedback"></div>
+</div>
+
+<script>
+function checkQ1() {
+  const val = document.getElementById('q1').value.trim();
+  const fb = document.getElementById('q1-feedback');
+  const normalized = val.replace(/\s/g, '');
+  if (['會編譯錯', '編譯會錯', '無法編譯', '編譯失敗'].some(a => normalized.includes(a.replace(/\s/g,'')))) {
+    fb.textContent = '對！match 要求「窮盡（exhaustive）」，所有 variant 都要有對應分支，編譯器會直接拒絕編譯不完整的 match。';
+    fb.className = 'feedback ok';
+  } else {
+    fb.textContent = '再想想：match 跟 if/else 不一樣的地方，是它會不會檢查「所有可能都處理到了」？';
+    fb.className = 'feedback bad';
+  }
+}
+</script>
+
+<div class="win">
+<div class="kicker">這一課的成果</div>
+你現在能用 <code>match</code> 拆開 <code>Result</code>，分別處理成功跟失敗，也能結合 <code>loop</code> + <code>break</code> 做到「打錯就重問」。把前六課全部串起來，你已經能寫一個會跟使用者互動、輸入錯誤不會崩潰的小工具了 —— 這是你能力範圍內第一個「像樣」的 CLI 程式雛形。
+</div>
+
+<p class="source">
+主要參考資料：<a href="https://doc.rust-lang.org/book/ch06-02-match.html" target="_blank">The Rust Programming Language — 6.2 The match Control Flow Construct</a> 與 <a href="https://doc.rust-lang.org/book/ch09-02-recoverable-errors-with-result.html" target="_blank">9.2 Recoverable Errors with Result</a>（官方書籍，繁中版：<a href="https://rust-lang.tw/book-tw/ch06-02-match.html" target="_blank">rust-lang.tw</a>）。想動手練習更多小題，可以搭配 <a href="https://github.com/rust-lang/rustlings" target="_blank">Rustlings</a> 的 <code>enums</code> 與 <code>error_handling</code> 單元。
+</p>
+
+<nav class="lesson-links">
+<a href="0005-reading-user-input.html">&larr; 上一課：讀取使用者輸入</a>
+<a href="0007-building-a-small-tool.html">下一課：整合一個小工具 &rarr;</a>
+</nav>
+
+<p class="ask-agent">卡住了、或有任何看不懂的地方，直接問我（你的 AI 教學助手）就好 —— 隨時可以打斷這個流程提問。</p>
+
+</main>
+</body>
+</html>

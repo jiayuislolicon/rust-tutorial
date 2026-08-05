@@ -1,0 +1,103 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="UTF-8">
+<title>Lesson 5 · 讀取使用者輸入</title>
+<link rel="stylesheet" href="../assets/style.css">
+</head>
+<body>
+<main>
+
+<div class="kicker">Lesson 0005 · Rust · CLI 工具養成路線</div>
+<h1>讀取使用者輸入</h1>
+<div class="byline">目標：能從終端機讀進一行使用者輸入的文字，並轉成需要的型別來用。</div>
+
+<p>
+前四課處理的都是程式內部寫死的資料。這一課讓程式第一次真的跟外界互動 —— 讀使用者從鍵盤打的東西。這是任何互動式 CLI 工具的起點，也會把前幾課的 <code>mut</code>、shadowing、函式回傳值全部用上一次。
+</p>
+
+<h2>讀一行輸入</h2>
+<pre><code>use std::io;
+
+fn main() {
+    println!("你叫什麼名字？");
+
+    let mut input = String::new();
+    io::stdin()
+        .read_line(&mut input)
+        .expect("讀取輸入失敗");
+
+    let name = input.trim();
+    println!("哈囉，{}！", name);
+}</code></pre>
+
+<div class="callout">
+<strong>逐行拆解：</strong>
+<ul>
+<li><code>use std::io;</code> 把標準函式庫的 <code>io</code> 模組引入，之後才能寫 <code>io::stdin()</code>。</li>
+<li><code>let mut input = String::new();</code> 先建一個空字串，<strong>一定要 <code>mut</code></strong> —— 待會 <code>read_line</code> 要把讀到的文字寫進這個變數。</li>
+<li><code>io::stdin().read_line(&amp;mut input)</code> 讀一行輸入，<strong>附加</strong>到 <code>input</code> 後面（不是回傳新字串，是直接改 <code>input</code> 本身，所以要傳 <code>&amp;mut</code> —— 可變借用）。</li>
+<li><code>input.trim()</code> 去掉結尾的換行符號 —— 使用者按 Enter 送出時，那個換行也會被讀進 <code>input</code> 裡，不去掉的話後面比對字串會出問題。這裡用了 shadowing：<code>name</code> 是從 <code>input</code> 轉換出來的新綁定。</li>
+</ul>
+</div>
+
+<h2><code>.expect(...)</code> 是什麼？</h2>
+<p>
+<code>read_line</code> 有可能失敗（例如輸入來源出問題），所以它回傳一個 <code>Result</code>，代表「成功或失敗」兩種可能。<code>.expect("訊息")</code> 的意思是：<strong>如果失敗，直接讓程式當掉，並印出這個訊息</strong>。
+</p>
+<div class="callout tip">
+這不是正式的錯誤處理方式，只是「先讓它動起來」的捷徑 —— <code>Result</code>、<code>match</code>、真正妥善的錯誤處理是後面專門一課的主題。現在只要記得：看到 <code>.expect(...)</code>，代表這裡假設「正常來說不會失敗」。
+</div>
+
+<h2>把輸入轉成數字</h2>
+<p>讀進來的永遠是文字（<code>String</code>），想當數字用要自己轉換 —— 這正好用上 Lesson 2 教過的 shadowing 轉換鏈：</p>
+<pre><code>let mut input = String::new();
+io::stdin().read_line(&mut input).expect("讀取輸入失敗");
+
+let age: i32 = input.trim().parse().expect("請輸入一個數字");
+println!("明年你 {} 歲", age + 1);</code></pre>
+<p>
+<code>.parse()</code> 嘗試把字串轉成 <code>age: i32</code> 標註的型別；轉換也可能失敗（使用者打了文字而不是數字），所以一樣用 <code>.expect(...)</code> 先簡單處理。
+</p>
+
+<div class="quiz">
+<div class="q">小測驗：如果拿掉 <code>input.trim()</code> 直接寫 <code>input.parse()</code>，使用者輸入 <code>25</code> 後按 Enter，結果會怎樣？（用 3 個字回答，例如「會失敗」或「正常執行」這種長度）</div>
+<input type="text" id="q1" placeholder="你的答案">
+<button onclick="checkQ1()">檢查</button>
+<div class="feedback" id="q1-feedback"></div>
+</div>
+
+<script>
+function checkQ1() {
+  const val = document.getElementById('q1').value.trim();
+  const fb = document.getElementById('q1-feedback');
+  const normalized = val.replace(/\s/g, '');
+  if (['會失敗', '會出錯', '解析失敗', '轉換失敗'].some(a => normalized.includes(a.replace(/\s/g,'')))) {
+    fb.textContent = '對！input 裡其實是 "25\\n"，換行符號讓它不是一個合法的數字字串，parse::<i32>() 會失敗，.expect(...) 就會讓程式當掉。';
+    fb.className = 'feedback ok';
+  } else {
+    fb.textContent = '再想想：使用者按 Enter 送出時，那個換行符號有沒有被讀進 input 裡？"25\\n" 還算是合法的數字字串嗎？';
+    fb.className = 'feedback bad';
+  }
+}
+</script>
+
+<div class="win">
+<div class="kicker">這一課的成果</div>
+你現在能讀一行使用者輸入、用 <code>trim()</code> 清掉換行、並用 <code>parse()</code> 轉成需要的型別。前五課的東西加起來，你已經能寫一個會跟使用者互動的最小 CLI 工具了。下一課會把這些串起來，寫一個完整的小工具，並開始碰到需要「正式處理錯誤」的地方。
+</div>
+
+<p class="source">
+主要參考資料：<a href="https://doc.rust-lang.org/book/ch02-00-guessing-game-tutorial.html" target="_blank">The Rust Programming Language — 2. Programming a Guessing Game</a>（官方書籍，繁中版：<a href="https://rust-lang.tw/book-tw/ch02-00-guessing-game-tutorial.html" target="_blank">rust-lang.tw</a>），以及 <a href="https://doc.rust-lang.org/std/io/fn.stdin.html" target="_blank">std::io::stdin</a> 官方文件。
+</p>
+
+<nav class="lesson-links">
+<a href="0004-loops-and-collections.html">&larr; 上一課：迴圈與集合</a>
+<a href="0006-match-and-error-handling.html">下一課：match 與正式的錯誤處理 &rarr;</a>
+</nav>
+
+<p class="ask-agent">卡住了、或有任何看不懂的地方，直接問我（你的 AI 教學助手）就好 —— 隨時可以打斷這個流程提問。</p>
+
+</main>
+</body>
+</html>

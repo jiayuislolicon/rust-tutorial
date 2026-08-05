@@ -1,0 +1,175 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="UTF-8">
+<title>Lesson 9 · Option 與缺席的值</title>
+<link rel="stylesheet" href="../assets/style.css">
+<script src="../assets/quiz.js"></script>
+</head>
+<body>
+<main>
+
+<div class="kicker">Lesson 0009 · Rust · CLI 工具養成路線</div>
+<h1>Option 與缺席的值</h1>
+<div class="byline">目標：能用 <code>Option</code> 處理「這個值可能根本不存在」的情況，讓程式在使用者忘記給參數時給出友善說明，而不是當場崩潰。</div>
+
+<p>
+<a href="0008-command-line-arguments-and-files.html">上一課</a>的工具有一個洞。它能讀檔、檔案不存在也不會崩潰 —— 但如果使用者<strong>完全沒給參數</strong>就直接執行：
+</p>
+
+<pre><code>$ cargo run
+thread 'main' panicked at src/main.rs:6:25:
+index out of bounds: the len is 1 but the index is 1</code></pre>
+
+<p>
+崩潰了。原因很直白：沒給參數時 <code>args</code> 裡只有一個東西（程式自己的路徑），長度是 1，合法索引只有 <code>args[0]</code>。你卻要求 <code>args[1]</code>，這個位置不存在，Rust 只能讓程式當掉。
+</p>
+
+<div class="callout">
+<strong>為什麼這是真的 bug：</strong>使用者忘記打檔名是完全正常的操作 —— 這是<em>可以預期的使用者錯誤</em>，跟 <a href="0008-command-line-arguments-and-files.html">Lesson 8</a> 裡「檔案不存在」是同一類。可預期的錯誤要好好回應，不該讓程式崩潰。這也是 <code>MISSION.md</code> 明確列出的目標之一。
+</div>
+
+<h2>Rust 沒有 null</h2>
+
+<p>
+很多語言用 <code>null</code> / <code>nil</code> / <code>None</code> 表示「沒有值」，而問題在於：任何值都可能偷偷是 <code>null</code>，你永遠不知道哪一行會炸。Rust 選了另一條路 —— <strong>它根本沒有 <code>null</code></strong>。取而代之的是一個叫 <code>Option</code> 的 enum：
+</p>
+
+<pre><code>enum Option&lt;T&gt; {
+    None,       // 沒有值
+    Some(T),    // 有值，值就裝在裡面
+}</code></pre>
+
+<p>
+關鍵差別是：「可能沒有值」這件事被<strong>寫進型別裡了</strong>。一個 <code>String</code> 保證那裡有一個字串 —— 它可以是空字串，但一定存在；只有 <code>Option&lt;String&gt;</code> 才可能<em>連字串都沒有</em>。</p>
+
+<pre><code>let a: String         = String::new();       // 空字串
+let b: Option&lt;String&gt; = None;                // 沒有字串
+let c: Option&lt;String&gt; = Some(String::new()); // 有一個空字串</code></pre>
+
+<p>
+<code>b</code> 和 <code>c</code> 是不同的狀態，這個差別在真實 CLI 裡有意義：使用者打 <code>--name ""</code>（給了名字，只是名字是空的）跟完全沒打 <code>--name</code>（沒給名字），你可能想有不同反應。</p>
+
+<p>
+而「寫進型別裡」實際的感覺就是<strong>編譯器會擋你</strong>。對 <code>Option&lt;String&gt;</code> 直接呼叫字串的方法會編不過：</p>
+
+<pre><code>error[E0599]: no method named `to_uppercase` found for enum `Option&lt;T&gt;`
+note: the method `to_uppercase` exists on the type `String`</code></pre>
+
+<p>
+編譯器的意思是：你手上這個東西還不確定有沒有 <code>String</code>，所以不能當成 <code>String</code> 來用。</p>
+
+<p>
+要用到裡面的 <code>String</code>，得先把 <code>Option</code> 拆開。怎麼拆就是下一節的事。</p>
+
+<p>
+對比一下有 <code>null</code> 的語言：同樣這一行會編譯成功，然後在執行時炸掉。Rust 把炸點從執行時搬到了編譯時。
+</p>
+
+<div class="callout tip">
+<strong>你已經會這個形狀了。</strong><a href="0006-match-and-error-handling.html">Lesson 6</a> 的 <code>Result</code> 是 <code>Ok(T)</code> / <code>Err(E)</code>，<code>Option</code> 是 <code>Some(T)</code> / <code>None</code> —— 兩個變體、用 <code>match</code> 拆開、編譯器強制窮盡。差別只在語意：<code>Result</code> 說的是「成功還是失敗」，<code>Option</code> 說的是「有還是沒有」。少了值不一定是錯誤。
+</div>
+
+<h2><code>.get()</code> 取代中括號</h2>
+
+<p>
+索引語法 <code>args[1]</code> 的態度是「這裡一定有東西，沒有就當掉」。<code>Vec</code> 另外提供了一個誠實版本：
+</p>
+
+<pre><code>let args: Vec&lt;String&gt; = env::args().collect();
+
+args[1]         // &String —— 越界就 panic
+args.get(1)     // Option&lt;&String&gt; —— 越界回傳 None</code></pre>
+
+<p>
+<code>.get(1)</code> 不會崩潰。它回傳 <code>Option&lt;&String&gt;</code>：有第 1 個元素就是 <code>Some(&"notes.txt")</code>，沒有就是 <code>None</code>。危險從「執行時當掉」搬到了「型別裡的一個分支」，而分支是你能處理的東西。
+</p>
+
+<h2>用 match 收掉</h2>
+
+<pre><code>use std::env;
+use std::fs;
+
+fn main() {
+    let args: Vec&lt;String&gt; = env::args().collect();
+
+    let filename = match args.get(1) {
+        Some(name) =&gt; name,
+        None =&gt; {
+            println!("用法：cargo run -- &lt;檔名&gt;");
+            return;
+        }
+    };
+
+    match fs::read_to_string(filename) {
+        Ok(content) =&gt; println!("{}", content),
+        Err(error) =&gt; println!("讀不到檔案 {}：{}", filename, error),
+    }
+}</code></pre>
+
+<div class="callout">
+<strong>兩個新東西：</strong>
+<ul>
+<li><strong><code>match</code> 當成值用。</strong><code>let filename = match ... ;</code> —— 整個 <code>match</code> 求值成一個東西再綁給 <code>filename</code>。這就是 <a href="0003-functions-and-branching.html">Lesson 3</a> 的「區塊即表達式」，只是換到 <code>match</code> 上。<code>Some(name) =&gt; name</code> 這條分支的值就是 <code>name</code>。</li>
+<li><strong><code>return</code> 提早離開。</strong><code>None</code> 分支沒有檔名可以給出去，所以印完用法就 <code>return</code> 結束 <code>main</code>。這讓兩條分支的型別不衝突：一條給出 <code>&String</code>，另一條根本不會回來。</li>
+</ul>
+</div>
+
+<div class="callout tip">
+<strong>如果「沒有值」時你想用預設值</strong>而不是結束程式，<code>Option</code> 上有現成的捷徑：<code>args.get(1).unwrap_or(&default)</code> —— 是 <code>Some</code> 就用裡面的值，是 <code>None</code> 就用你給的那個。<code>Option</code> 有幾十個這種方法（<a href="https://doc.rust-lang.org/std/option/enum.Option.html" target="_blank">std 文件</a>），但先把 <code>match</code> 練熟：看得懂 <code>match</code>，那些捷徑之後都只是省字。
+</div>
+
+<div class="quiz" data-mcq data-answer="1">
+<div class="q">小測驗一：把 <code>args[1]</code> 換成 <code>args.get(1)</code>，關鍵好處是什麼？</div>
+<div class="choices">
+<button>越界時回傳 None，不會讓程式崩潰</button>
+<button>越界時自動補一個空字串當預設值</button>
+<button>越界時比中括號索引執行得更快一些</button>
+</div>
+<div class="feedback"
+     data-ok="對。危險從「執行時 panic」變成型別裡的一個 None 分支 —— 而分支是你能處理的東西。"
+     data-bad="再想一次：.get() 回傳的是 Option。Option 的兩個變體分別代表什麼？"></div>
+</div>
+
+<div class="quiz" data-text data-accept='["Err"]'>
+<div class="q">小測驗二（回想 <a href="0006-match-and-error-handling.html">Lesson 6</a>）：<code>Option</code> 用 <code>None</code> 表示「沒有值」。那 <code>Result</code> 用哪個變體表示「失敗」？（英文，3 個字母）</div>
+<input type="text" id="q2" placeholder="你的答案">
+<button>檢查</button>
+<div class="feedback"
+     data-ok="對，Err。Some/None 和 Ok/Err 是同一個形狀的兩種語意 —— match 的用法完全一樣。"
+     data-bad="想想 Lesson 6 那個 parse 的 match：成功那條是 Ok，失敗那條呢？"></div>
+</div>
+
+<h2>換你動手</h2>
+
+<p>
+把 <code>hello_cli/src/main.rs</code> 改成沒給參數也不會崩潰。<strong>先不要往上翻</strong>，憑記憶寫 —— 想不起來再回頭看。成功條件是這三個指令：
+</p>
+
+<pre><code>cargo run -- notes.txt   # 印出檔案內容
+cargo run -- nope.txt    # 印出讀不到檔案的訊息
+cargo run                # 印出用法說明，且不出現 panicked at</code></pre>
+
+<p>
+做完了再加一題：如果沒給參數時你希望它<strong>預設讀 <code>notes.txt</code></strong> 而不是印用法，程式要怎麼改？（提示：上面那個 <code>unwrap_or</code> 的 callout。）
+</p>
+
+<div class="win">
+<div class="kicker">這一課的成果</div>
+你的工具現在對三種輸入都有正確反應：正常檔名、不存在的檔名、完全沒給參數 —— 而且沒有任何一條路徑會 panic。這就是 <code>MISSION.md</code> 裡「不 panic 地處理錯誤」那條目標。你也拿到了 Rust 兩大核心 enum 的第二個：<code>Result</code> 管失敗，<code>Option</code> 管缺席，之後幾乎每個 Rust API 都建立在這兩個之上。
+</div>
+
+<p class="source">
+主要參考資料：<a href="https://doc.rust-lang.org/book/ch06-01-defining-an-enum.html" target="_blank">The Rust Programming Language — 6.1 Defining an Enum</a>，其中「The <code>Option</code> Enum and Its Advantages Over Null Values」一節就是這課的正宗來源（繁中版：<a href="https://rust-lang.tw/book-tw/ch06-01-defining-an-enum.html" target="_blank">rust-lang.tw</a>）。API 細節見 <a href="https://doc.rust-lang.org/std/option/enum.Option.html" target="_blank">std::option::Option</a> 與 <a href="https://doc.rust-lang.org/std/primitive.slice.html#method.get" target="_blank">slice::get</a>。速查表：<a href="../reference/option-and-result.html">Option 與 Result 參考卡</a>。
+</p>
+
+<nav class="lesson-links">
+<a href="0008-command-line-arguments-and-files.html">&larr; 上一課：命令列參數與檔案</a>
+<a href="0010-ownership-and-move.html">下一課：Ownership：值只有一個主人 &rarr;</a>
+</nav>
+
+<p class="ask-agent">卡住了、或有任何看不懂的地方，直接問我（你的 AI 教學助手）就好 —— 隨時可以打斷這個流程提問。</p>
+
+</main>
+</body>
+</html>

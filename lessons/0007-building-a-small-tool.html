@@ -1,0 +1,111 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="UTF-8">
+<title>Lesson 7 · 整合一個小工具</title>
+<link rel="stylesheet" href="../assets/style.css">
+</head>
+<body>
+<main>
+
+<div class="kicker">Lesson 0007 · Rust · CLI 工具養成路線</div>
+<h1>整合一個小工具</h1>
+<div class="byline">目標：把前六課的東西全部串起來，寫一個能重複使用、輸入錯誤不會崩潰的攝氏轉華氏小工具。</div>
+
+<p>
+前六課分別學了：函式（Lesson 3）、迴圈與 <code>Vec</code>（Lesson 4）、讀取輸入（Lesson 5）、<code>match</code> 與錯誤處理（Lesson 6）。這一課不教新的大觀念，而是把它們接成一個完整程式 —— 這正是實際寫 CLI 工具時的樣子：沒有哪一課的內容是孤立的。
+</p>
+
+<h2>完整程式：攝氏轉華氏</h2>
+<pre><code>use std::io;
+
+fn celsius_to_fahrenheit(c: f64) -> f64 {
+    c * 9.0 / 5.0 + 32.0
+}
+
+fn main() {
+    let mut history: Vec&lt;f64&gt; = Vec::new();
+
+    loop {
+        println!("輸入攝氏溫度（輸入 q 結束）：");
+        let mut input = String::new();
+        io::stdin().read_line(&mut input).expect("讀取輸入失敗");
+        let input = input.trim();
+
+        if input == "q" {
+            break;
+        }
+
+        match input.parse::&lt;f64&gt;() {
+            Ok(c) =&gt; {
+                let f = celsius_to_fahrenheit(c);
+                println!("{:.1}°C = {:.1}°F", c, f);
+                history.push(c);
+            }
+            Err(_) =&gt; println!("不是有效的數字，再試一次。"),
+        }
+    }
+
+    println!("這次總共轉換了 {} 筆：{:?}", history.len(), history);
+}</code></pre>
+
+<div class="callout">
+<strong>對照前幾課，這裡沒有一行是新概念：</strong>
+<ul>
+<li><code>fn celsius_to_fahrenheit(c: f64) -&gt; f64</code> —— Lesson 3 的函式，帶參數、帶回傳值，最後一行沒分號。</li>
+<li><code>let mut history: Vec&lt;f64&gt; = Vec::new();</code> 加 <code>history.push(c)</code> —— Lesson 4 的 <code>Vec</code>，動態收集每次輸入的溫度。</li>
+<li><code>io::stdin().read_line(&amp;mut input)</code>、<code>.trim()</code>、<code>.parse()</code> —— Lesson 5 的輸入讀取與轉換。</li>
+<li><code>loop { ... match ... }</code> —— Lesson 6 的「打錯就重問」模式，這裡用 <code>if input == "q" { break; }</code> 讓使用者可以主動結束。</li>
+</ul>
+</div>
+
+<div class="callout tip">
+<strong>兩個小新東西，但都很小：</strong> <code>f64</code> 是浮點數型別（可以有小數點），跟之前一直用的整數 <code>i32</code> 對應；<code>{:.1}</code> 是格式化寫法，代表「小數點後留 1 位」。<code>{:?}</code>（Debug 格式）能直接印出 <code>Vec</code> 這種複合資料的內容，方便除錯或做總結輸出 —— 一般 <code>{}</code> 沒辦法直接印一整個 <code>Vec</code>。
+</div>
+
+<h2>為什麼這樣組織？</h2>
+<p>
+把「轉換邏輯」抽成 <code>celsius_to_fahrenheit</code> 這個獨立函式，而不是直接寫在 <code>main</code> 裡，有一個實際好處：以後想加測試（之後會教），或想在別的地方重複使用這個轉換，直接呼叫函式就好，不用把 <code>main</code> 的迴圈跟輸入邏輯也搬過去。<strong>把「純計算」跟「跟使用者互動」分開，是組織 CLI 工具的基本原則。</strong>
+</p>
+
+<div class="quiz">
+<div class="q">小測驗：如果使用者在還沒輸入 q 之前，中間有一次打錯（例如打了 "abc"），<code>history</code> 最後會不會把這次錯誤也記進去？（用 3 個字回答，例如「不會記」或「會記錄」這種長度）</div>
+<input type="text" id="q1" placeholder="你的答案">
+<button onclick="checkQ1()">檢查</button>
+<div class="feedback" id="q1-feedback"></div>
+</div>
+
+<script>
+function checkQ1() {
+  const val = document.getElementById('q1').value.trim();
+  const fb = document.getElementById('q1-feedback');
+  const normalized = val.replace(/\s/g, '');
+  if (['不會記', '不會有', '不會加', '不會存'].some(a => normalized.includes(a.replace(/\s/g,'')))) {
+    fb.textContent = '對！history.push(c) 寫在 match 的 Ok 分支裡面，只有 parse 成功才會執行到，Err 分支只印訊息，不會 push。';
+    fb.className = 'feedback ok';
+  } else {
+    fb.textContent = '再想想：history.push(c) 這一行，是寫在 Ok 分支裡面，還是 match 外面？';
+    fb.className = 'feedback bad';
+  }
+}
+</script>
+
+<div class="win">
+<div class="kicker">這一課的成果</div>
+你現在有一個完整、能重複使用、輸入錯誤不會崩潰的 CLI 小工具，而且清楚知道裡面每一行分別是哪一課教的。這是你目前所有 Rust 知識的第一次「整合測試」—— 下一課會開始碰真正需要處理錯誤細節、而不只是重試的情境（例如命令列參數、檔案讀寫）。
+</div>
+
+<p class="source">
+主要參考資料：<a href="https://doc.rust-lang.org/book/ch03-03-how-functions-work.html" target="_blank">The Rust Programming Language — 3.3 How Functions Work</a> 與 <a href="https://doc.rust-lang.org/std/fmt/index.html" target="_blank">std::fmt</a>（格式化語法官方文件，含 <code>{:.1}</code>、<code>{:?}</code> 的說明）。想動手練習更多小題，可以搭配 <a href="https://github.com/rust-lang/rustlings" target="_blank">Rustlings</a> 的 <code>functions</code> 與 <code>quiz1</code>/<code>quiz2</code> 單元（綜合練習）。
+</p>
+
+<nav class="lesson-links">
+<a href="0006-match-and-error-handling.html">&larr; 上一課：match 與正式的錯誤處理</a>
+<a href="0008-command-line-arguments-and-files.html">下一課：命令列參數與檔案 &rarr;</a>
+</nav>
+
+<p class="ask-agent">卡住了、或有任何看不懂的地方，直接問我（你的 AI 教學助手）就好 —— 隨時可以打斷這個流程提問。</p>
+
+</main>
+</body>
+</html>

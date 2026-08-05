@@ -1,0 +1,179 @@
+/* Shared stylesheet for all lessons in this Rust teaching workspace. */
+
+:root {
+  --ink: #1a1a1a;
+  --muted: #5c5c5c;
+  --rule: #d8d3c9;
+  --paper: #fdfcf9;
+  --accent: #a5402d;
+  --code-bg: #f3f0e9;
+  --ok: #2f6b3a;
+  --bad: #a5402d;
+  --serif: "Iowan Old Style", "Palatino Linotype", Palatino, Georgia, serif;
+  --mono: "SF Mono", Menlo, Consolas, monospace;
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  background: var(--paper);
+  color: var(--ink);
+  font-family: var(--serif);
+  font-size: 19px;
+  line-height: 1.6;
+}
+
+main {
+  max-width: 680px;
+  margin: 0 auto;
+  padding: 4rem 1.5rem 6rem;
+}
+
+.kicker {
+  font-family: var(--mono);
+  font-size: 0.75rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--muted);
+  margin-bottom: 0.5rem;
+}
+
+h1 {
+  font-size: 2.1rem;
+  line-height: 1.25;
+  margin: 0 0 0.25rem;
+}
+
+h2 {
+  font-size: 1.3rem;
+  margin-top: 2.5rem;
+  border-bottom: 1px solid var(--rule);
+  padding-bottom: 0.3rem;
+}
+
+h3 { font-size: 1.05rem; margin-top: 1.75rem; }
+
+p, li { color: var(--ink); }
+
+.byline {
+  color: var(--muted);
+  font-size: 0.95rem;
+  margin-bottom: 2.5rem;
+}
+
+code {
+  font-family: var(--mono);
+  font-size: 0.88em;
+  background: var(--code-bg);
+  padding: 0.1em 0.35em;
+  border-radius: 3px;
+}
+
+pre {
+  font-family: var(--mono);
+  font-size: 0.88rem;
+  background: var(--code-bg);
+  border-left: 3px solid var(--accent);
+  padding: 1rem 1.2rem;
+  overflow-x: auto;
+  border-radius: 0 4px 4px 0;
+}
+pre code { background: none; padding: 0; }
+
+.callout {
+  border-left: 3px solid var(--accent);
+  background: #faf3ef;
+  padding: 0.9rem 1.2rem;
+  margin: 1.5rem 0;
+  font-size: 0.95rem;
+}
+
+.callout.tip { border-color: var(--ok); background: #f2f6f0; }
+
+.source {
+  font-size: 0.9rem;
+  color: var(--muted);
+}
+.source a { color: var(--accent); }
+
+.win {
+  margin-top: 2.5rem;
+  padding: 1.2rem 1.4rem;
+  background: #fff;
+  border: 1px solid var(--rule);
+  border-radius: 6px;
+}
+.win .kicker { color: var(--ok); }
+
+nav.lesson-links {
+  margin-top: 3rem;
+  padding-top: 1.5rem;
+  border-top: 1px solid var(--rule);
+  font-family: var(--mono);
+  font-size: 0.85rem;
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+}
+nav.lesson-links a { color: var(--accent); text-decoration: none; }
+nav.lesson-links a:hover { text-decoration: underline; }
+
+.ask-agent {
+  margin-top: 3rem;
+  font-size: 0.9rem;
+  color: var(--muted);
+  font-style: italic;
+}
+
+/* --- Quiz widget --- */
+.quiz {
+  margin: 1.5rem 0;
+  padding: 1.2rem;
+  background: #fff;
+  border: 1px solid var(--rule);
+  border-radius: 6px;
+}
+.quiz .q { font-weight: 600; margin-bottom: 0.75rem; }
+.quiz input[type="text"] {
+  font-family: var(--mono);
+  font-size: 0.95rem;
+  padding: 0.4rem 0.6rem;
+  border: 1px solid var(--rule);
+  border-radius: 4px;
+  width: 100%;
+  max-width: 320px;
+}
+.quiz button {
+  font-family: var(--serif);
+  font-size: 0.9rem;
+  margin-left: 0.5rem;
+  padding: 0.4rem 0.9rem;
+  border: 1px solid var(--ink);
+  background: var(--ink);
+  color: var(--paper);
+  border-radius: 4px;
+  cursor: pointer;
+}
+.quiz .feedback { margin-top: 0.6rem; font-size: 0.9rem; display: none; }
+.quiz .feedback.ok { color: var(--ok); display: block; }
+.quiz .feedback.bad { color: var(--bad); display: block; }
+
+/* --- Multiple-choice quiz (driven by assets/quiz.js) --- */
+.quiz .choices { display: flex; flex-direction: column; gap: 0.5rem; }
+.quiz .choices button {
+  font-family: var(--serif);
+  font-size: 0.92rem;
+  margin-left: 0;
+  text-align: left;
+  padding: 0.5rem 0.8rem;
+  border: 1px solid var(--rule);
+  background: #fff;
+  color: var(--ink);
+  border-radius: 4px;
+  cursor: pointer;
+}
+.quiz .choices button:hover:not([disabled]) { border-color: var(--ink); }
+.quiz .choices button.picked-ok { border-color: var(--ok); background: #f2f6f0; }
+.quiz .choices button.picked-bad { border-color: var(--bad); background: #faf3ef; }
+.quiz .choices button[disabled] { cursor: default; }

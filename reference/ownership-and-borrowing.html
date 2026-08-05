@@ -1,0 +1,91 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="UTF-8">
+<title>Reference · 所有權與借用</title>
+<link rel="stylesheet" href="../assets/style.css">
+</head>
+<body>
+<main>
+<div class="kicker">Reference · 速查表</div>
+<h1>所有權與借用</h1>
+
+<h2>三條所有權規則</h2>
+<pre><code>1. 每一個值都有一個擁有者（owner）
+2. 同一時間只能有一個擁有者
+3. 擁有者離開作用域時，值就被釋放</code></pre>
+
+<h2>兩條借用規則</h2>
+<pre><code>在任何一個時間點，一個值可以有：
+
+    任意多個 &amp;        （唯讀借用）
+  或
+    剛好一個 &amp;mut     （可改借用）
+
+兩者不能同時存在。
+借用的範圍到「最後一次使用」為止，不是到大括號結尾。</code></pre>
+
+<h2>三種傳值方式</h2>
+<pre><code>fn f(s: String)        // 移動：擁有者變成 s，呼叫端失效
+fn f(s: &amp;String)       // 借用：只能讀，呼叫端還能用
+fn f(s: &amp;mut String)   // 可改借用：能改，呼叫端還能用
+
+f(text);               // 移動
+f(&amp;text);              // 借用
+f(&amp;mut text);          // 可改借用（text 必須是 let mut）</code></pre>
+
+<h2>複製還是移動？</h2>
+<pre><code>有 Copy 標記 → 賦值時複製，原變數還能用
+沒有        → 賦值時移動，原變數失效
+
+有：  i32 i64 u8 usize / f64 f32 / bool / char / &amp;T
+沒有：String / Vec&lt;T&gt; / &amp;mut T
+
+分界線是「大小固定」vs「可以增長」，不是「數字」vs「其他」。</code></pre>
+
+<h2>四個錯誤代號</h2>
+<pre><code>E0382  borrow of moved value
+       → 移動之後又用了原變數
+       → 修法：改成 &amp;（首選）或 .clone()（會真的複製）
+
+E0502  cannot borrow as mutable because it is also borrowed as immutable
+       → &amp; 和 &amp;mut 並存
+       → 修法：把讀取移到修改之前，讓借用先結束
+
+E0499  cannot borrow as mutable more than once at a time
+       → 兩個 &amp;mut
+       → 修法：讓第一個借用結束後再開第二個
+
+E0596  cannot borrow as mutable, as it is not declared as mutable
+       → 忘記寫 let mut
+       → 修法：照訊息裡的 help 加上 mut</code></pre>
+
+<h2>&amp;mut 的三個 mut</h2>
+<pre><code>fn add_line(s: &amp;mut String) { ... }   // ← 參數型別
+let mut text = String::new();         // ← 變數宣告
+add_line(&amp;mut text);                  // ← 呼叫處
+
+三個都要寫，少一個就編不過。</code></pre>
+
+<h2>為什麼要有這些規則</h2>
+<pre><code>單一擁有者      → 避免 double free（同一塊記憶體釋放兩次）
+&amp; / &amp;mut 互斥   → 避免資料競爭（一邊改，一邊有人在讀）
+
+兩者都在編譯時檢查，所以 Rust 不需要垃圾回收（GC）。</code></pre>
+
+<h2>選擇順序</h2>
+<pre><code>1. 只需要讀           → &amp;
+2. 需要改，但不想搬走 → &amp;mut
+3. 真的需要擁有       → 直接傳值（移動）
+4. 兩邊都要獨立的一份 → .clone()
+
+.clone() 是最後手段。它一定能過，但會真的複製資料。</code></pre>
+
+<p class="source">
+來源：<a href="https://doc.rust-lang.org/book/ch04-01-what-is-ownership.html" target="_blank">The Rust Book — 4.1 What is Ownership?</a>、<a href="https://doc.rust-lang.org/book/ch04-02-references-and-borrowing.html" target="_blank">4.2 References and Borrowing</a>（繁中版：<a href="https://rust-lang.tw/book-tw/ch04-01-what-is-ownership.html" target="_blank">rust-lang.tw</a>）。
+對應課程：<a href="../lessons/0010-ownership-and-move.html">Lesson 10 · Ownership</a>、<a href="../lessons/0011-borrowing-and-references.html">Lesson 11 · Borrowing</a>。
+</p>
+
+</main>
+</body>
+</html>

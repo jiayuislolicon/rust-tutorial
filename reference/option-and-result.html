@@ -1,0 +1,69 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="UTF-8">
+<title>Reference · Option 與 Result</title>
+<link rel="stylesheet" href="../assets/style.css">
+</head>
+<body>
+<main>
+<div class="kicker">Reference · 速查表</div>
+<h1>Option 與 Result</h1>
+
+<h2>同一個形狀，兩種語意</h2>
+<pre><code>enum Option&lt;T&gt; {          enum Result&lt;T, E&gt; {
+    Some(T),  // 有值          Ok(T),   // 成功
+    None,     // 沒有值        Err(E),  // 失敗
+}                         }</code></pre>
+
+<p>
+兩者都是兩個變體的 enum，都用 <code>match</code> 拆開，編譯器都強制窮盡（漏掉一個變體就編不過）。
+選擇依據：<strong>缺席</strong>用 <code>Option</code>，<strong>失敗</strong>用 <code>Result</code>。缺席不一定是錯誤。
+</p>
+
+<h2>用 match 拆開</h2>
+<pre><code>match args.get(1) {
+    Some(name) =&gt; name,           // 分支的值 = 整個 match 的值
+    None =&gt; {
+        println!("用法：...");
+        return;                    // 提早離開，型別不衝突
+    }
+}
+
+match fs::read_to_string(path) {
+    Ok(content) =&gt; println!("{}", content),
+    Err(error)  =&gt; println!("讀不到：{}", error),
+}</code></pre>
+
+<h2>會 panic 的取值方式（謹慎使用）</h2>
+<pre><code>args[1]                  // 越界 → panic
+opt.unwrap()             // None → panic
+opt.expect("訊息")        // None → panic，附自訂訊息
+res.expect("訊息")        // Err  → panic，附自訂訊息</code></pre>
+<p>
+只在「這裡若沒有值就是程式的 bug」時才用。<strong>可預期的使用者錯誤</strong>（檔案不存在、參數沒給、輸入不是數字）一律用 <code>match</code>。
+</p>
+
+<h2>不會 panic 的取值方式</h2>
+<pre><code>args.get(1)                     // → Option&lt;&String&gt;，越界給 None
+opt.unwrap_or(&default)         // None → 用你給的預設值
+opt.is_some() / opt.is_none()   // → bool，只想知道有沒有</code></pre>
+
+<h2>常見回傳 Option / Result 的 API</h2>
+<pre><code>vec.get(i)                 → Option&lt;&T&gt;      索引可能越界
+env::args().nth(1)         → Option&lt;String&gt;  參數可能沒給
+"42".parse::&lt;i32&gt;()        → Result&lt;i32, _&gt;  字串可能不是數字
+fs::read_to_string(path)   → Result&lt;String,_&gt; 檔案可能讀不到
+io::stdin().read_line(&mut s) → Result&lt;usize,_&gt; 讀取可能失敗</code></pre>
+
+<p class="source">
+來源：<a href="https://doc.rust-lang.org/book/ch06-01-defining-an-enum.html" target="_blank">The Rust Programming Language 6.1</a>（<code>Option</code>）、
+<a href="https://doc.rust-lang.org/book/ch09-02-recoverable-errors-with-result.html" target="_blank">9.2 Recoverable Errors with Result</a>、
+<a href="https://doc.rust-lang.org/std/option/enum.Option.html" target="_blank">std::option::Option</a>、
+<a href="https://doc.rust-lang.org/std/result/enum.Result.html" target="_blank">std::result::Result</a>。
+相關課程：<a href="../lessons/0006-match-and-error-handling.html">Lesson 6</a>、<a href="../lessons/0009-option-and-absent-values.html">Lesson 9</a>。
+</p>
+
+</main>
+</body>
+</html>

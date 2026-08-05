@@ -1,0 +1,131 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="UTF-8">
+<title>Lesson 2 · 變數與型別</title>
+<link rel="stylesheet" href="../assets/style.css">
+</head>
+<body>
+<main>
+
+<div class="kicker">Lesson 0002 · Rust · CLI 工具養成路線</div>
+<h1>變數與型別</h1>
+<div class="byline">目標：能宣告變數、知道何時要加 <code>mut</code>、認得幾個最常用的基本型別。</div>
+
+<p>
+上一課你很快就抓到 Cargo 的專案結構，這一課節奏會快一點，直接進主題。這是後面「讀使用者輸入」「處理檔案內容」「計數/統計」的地基 —— 任何 CLI 工具都要先會存資料，才能處理資料。
+</p>
+
+<h2>預設不可變（immutable by default）</h2>
+<p>這是 Rust 和大多數語言最不一樣的地方之一。把下面貼進 <code>hello_cli</code> 的 <code>src/main.rs</code>：</p>
+<pre><code>fn main() {
+    let attempts = 3;
+    println!("attempts = {}", attempts);
+
+    attempts = 4; // 這行會編譯錯
+}</code></pre>
+
+<p>執行 <code>cargo run</code>，你會看到編譯器報錯：<code>cannot assign twice to immutable variable</code>。</p>
+
+<div class="callout">
+<strong>為什麼要這樣設計？</strong> 在一個沒有垃圾回收器的語言裡，「這個變數之後還會不會被改」是一個很重要的資訊 —— 編譯器可以幫你抓出「以為它不會變，結果被改掉」的 bug。想讓變數可變，要「明確申請」：
+</div>
+
+<pre><code>let mut attempts = 3;
+println!("attempts = {}", attempts);
+
+attempts = 4; // 現在可以了
+println!("attempts = {}", attempts);</code></pre>
+
+<div class="callout">
+<strong>如果你少打了最後一行 <code>println!</code></strong>，編譯器會警告 <code>unused_assignments</code>（<code>value assigned to attempts is never read</code>）。這個警告跟「數字有沒有變化」無關，而是跟「這個值有沒有被讀取」有關：<code>attempts = 4;</code> 這個賦值之後，直到變數離開作用域為止都沒有任何地方讀取它，編譯器就會提醒你「這行賦值可能是多餘的、或你忘了寫後續程式」。這叫 <strong>dead store（死賦值）</strong>——就算存進去的值跟舊值一樣（例如又寫一次 <code>attempts = 3;</code>），只要沒被讀取，一樣會被警告。
+</div>
+
+<h2>幾個你會一直用到的基本型別</h2>
+<pre><code>let count: i32 = 10;         // 整數（32 位元，帶正負號）
+let ratio: f64 = 0.75;       // 浮點數
+let is_valid: bool = true;   // 布林
+let initial: char = 'R';     // 單一字元（注意是單引號）
+let name: String = String::from("hello_cli"); // 可成長的字串</code></pre>
+
+<p>
+大部分時候你不用手動寫型別（像上面的 <code>: i32</code>）—— 編譯器會從賦予的值自動推斷。上面特地寫出來是為了讓你看清楚每個變數的型別是什麼。實務上你只會在編譯器推斷不出來、或想強調意圖時才手動標註。
+</p>
+
+<div class="callout tip">
+<strong>先別深究 <code>String</code>：</strong> 你會注意到字串用了 <code>String::from(...)</code>，而不是像其他型別一樣直接寫字面值。這牽涉到 Rust 的所有權（ownership）機制 —— 這是之後專門一課的主題，現在只要照著用就好，不用糾結為什麼。
+</div>
+
+<h2>Shadowing：重複用同一個名字</h2>
+<p>Rust 允許你用 <code>let</code> 重新宣告同名變數，這叫 shadowing，跟 <code>mut</code> 不一樣：</p>
+<pre><code>let count = 10;
+let count = count + 1; // 產生一個新的 count，蓋掉舊的
+println!("count = {}", count); // 11</code></pre>
+<p>差別在於：<code>mut</code> 是同一個變數改值；shadowing 是用同一個名字重新綁定一個新的變數（甚至型別可以不一樣）。</p>
+
+<h3>實務上：mut 跟 shadowing 怎麼選？</h3>
+<p>兩個都可以「蓋掉」原本的名字，但解決的是不同的問題 —— 判斷點在於：<strong>這個值的本質有沒有變？</strong></p>
+
+<p><strong>用 <code>mut</code>：</strong> 概念上是同一件事、只是狀態隨時間演進，型別通常不變。</p>
+<pre><code>// 迴圈計數器 / 累加器
+let mut total = 0;
+for n in [1, 2, 3, 4] {
+    total += n; // 同一個 total，值持續累加
+}
+
+// 逐步組裝一份字串
+let mut log = String::new();
+log.push_str("start\n");
+log.push_str("processing\n");</code></pre>
+
+<p><strong>用 shadowing：</strong> 沿用同一個名字，做一連串轉換，型別甚至可能改變 —— 最典型的例子是處理使用者輸入：</p>
+<pre><code>let input = "42";                          // &str，來自使用者輸入
+let input = input.trim();                  // 還是 &str，去掉頭尾空白
+let input: i32 = input.parse().unwrap();   // 變成 i32，型別都換了</code></pre>
+
+<p>這三個 <code>input</code> 其實是三個不同的變數，只是概念上「這就是使用者輸入這件事，只是形式不斷精煉」，所以刻意共用名字，省去發明 <code>input_str</code>、<code>input_trimmed</code>、<code>input_num</code> 這類命名。</p>
+
+<div class="callout tip">
+<strong>安全性才是關鍵判斷點：</strong> shadowing 比 <code>mut</code> 更安全，因為每次 <code>let</code> 都產生新的不可變綁定，轉換完之後那個值預設又是不可變的，不用擔心後面某行不小心把它改掉。<strong>經驗法則</strong>：型別會變、或是幾個離散步驟的轉換 → shadowing；型別不變、持續性的迴圈式狀態演進 → <code>mut</code>。不確定時優先選 shadowing，它給的保護比較多。
+</div>
+
+<div class="quiz">
+<div class="q">小測驗：<code>let x = 5;</code> 之後想寫 <code>x = 6;</code>，需要在原本宣告加上什麼關鍵字？（一個英文單字）</div>
+<input type="text" id="q1" placeholder="你的答案">
+<button onclick="checkQ1()">檢查</button>
+<div class="feedback" id="q1-feedback"></div>
+</div>
+
+<script>
+function checkQ1() {
+  const val = document.getElementById('q1').value.trim().toLowerCase();
+  const fb = document.getElementById('q1-feedback');
+  if (val === 'mut') {
+    fb.textContent = '對！let mut x = 5; 之後 x = 6; 才會編譯過。';
+    fb.className = 'feedback ok';
+  } else {
+    fb.textContent = '再想想：Rust 變數預設不可變，要「明確申請」可變性，關鍵字是什麼？';
+    fb.className = 'feedback bad';
+  }
+}
+</script>
+
+<div class="win">
+<div class="kicker">這一課的成果</div>
+你現在能分辨「不可變」與「可變」變數、知道 <code>mut</code> 跟 shadowing 的差別，也認得 <code>i32</code> / <code>f64</code> / <code>bool</code> / <code>char</code> / <code>String</code> 這幾個最常見的型別。下一課會進到「函式與分支」—— 讓程式能依條件做不同的事，這是寫任何實際邏輯的必備工具。
+</div>
+
+<p class="source">
+主要參考資料：<a href="https://doc.rust-lang.org/book/ch03-01-variables-and-mutability.html" target="_blank">The Rust Programming Language — 3.1 Variables and Mutability</a>（官方書籍，繁中版：<a href="https://rust-lang.tw/book-tw/ch03-01-variables-and-mutability.html" target="_blank">rust-lang.tw</a>）。想動手練習更多小題，可以搭配 <a href="https://github.com/rust-lang/rustlings" target="_blank">Rustlings</a> 的 <code>variables</code> 單元。
+</p>
+
+<nav class="lesson-links">
+<a href="0001-hello-world-and-cargo.html">&larr; 上一課：Hello, Cargo</a>
+<a href="0003-functions-and-branching.html">下一課：函式與分支 &rarr;</a>
+</nav>
+
+<p class="ask-agent">卡住了、或有任何看不懂的地方，直接問我（你的 AI 教學助手）就好 —— 隨時可以打斷這個流程提問。</p>
+
+</main>
+</body>
+</html>

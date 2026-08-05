@@ -1,0 +1,113 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="UTF-8">
+<title>Lesson 3 · 函式與分支</title>
+<link rel="stylesheet" href="../assets/style.css">
+</head>
+<body>
+<main>
+
+<div class="kicker">Lesson 0003 · Rust · CLI 工具養成路線</div>
+<h1>函式與分支</h1>
+<div class="byline">目標：能寫出有參數、有回傳值的函式，並用 <code>if</code>/<code>else</code> 依條件做不同的事。</div>
+
+<p>
+上一課處理了「存資料」，這一課處理「組織邏輯」。任何 CLI 工具都會需要：把邏輯拆成小函式、依條件走不同分支（例如「檔案存在嗎？」「參數合法嗎？」）。這兩件事是寫任何實際程式的最小骨架。
+</p>
+
+<h2>函式：參數與回傳值</h2>
+<p>在 <code>hello_cli</code> 裡試試：</p>
+<pre><code>fn add(a: i32, b: i32) -> i32 {
+    a + b
+}
+
+fn main() {
+    let sum = add(2, 3);
+    println!("sum = {}", sum);
+}</code></pre>
+
+<div class="callout">
+<strong>三個要注意的地方：</strong>
+<ul>
+<li>參數<strong>一定要</strong>標註型別（<code>a: i32</code>），不像變數可以讓編譯器推斷。</li>
+<li><code>-&gt; i32</code> 宣告回傳型別。</li>
+<li><code>a + b</code> 後面<strong>沒有分號</strong> —— 這是函式的回傳值。加上分號會變成陳述式，就沒有回傳值了（回傳 <code>()</code>，也就是「空」）。</li>
+</ul>
+</div>
+
+<div class="callout tip">
+<strong>陳述式（statement）</strong>指的是只執行一個動作、但本身不產生任何值的一行程式碼；跟它相對的是<strong>表達式（expression）</strong>——會求值出一個結果的程式碼。判斷方式很機械：看有沒有分號 —— <code>a + b</code>（無分號）是表達式，<code>a + b;</code>（有分號）是陳述式。
+</div>
+
+<p>如果你習慣其他語言的 <code>return</code>，這裡也可以寫，效果一樣：</p>
+<pre><code>fn add(a: i32, b: i32) -> i32 {
+    return a + b; // 有 return 就可以加分號
+}</code></pre>
+<p>兩種寫法都對。慣例上，函式最後一行常省略 <code>return</code>，只在提早返回（例如分支中間跳出）時才用 <code>return</code>。</p>
+
+<h2><code>if</code> / <code>else</code> 是表達式，不只是敘述</h2>
+<p>先看最基本的形式：</p>
+<pre><code>fn main() {
+    let attempts = 3;
+
+    if attempts &gt; 5 {
+        println!("太多次了");
+    } else {
+        println!("還可以再試");
+    }
+}</code></pre>
+
+<div class="callout tip">
+<strong>跟其他語言不一樣的地方：</strong> Rust 的 <code>if</code> 是<strong>表達式（expression）</strong>，代表它可以直接產生一個值、賦給變數 —— 不需要三元運算子 <code>? :</code>：
+</div>
+
+<pre><code>let attempts = 3;
+let status = if attempts &gt; 5 { "blocked" } else { "ok" };
+println!("status = {}", status);</code></pre>
+
+<p>
+規則跟函式回傳值一樣：每個分支最後一行不能加分號，而且<strong>兩個分支的型別必須一致</strong>（這裡都是 <code>&amp;str</code>）。少了 <code>else</code>、或兩邊型別不同，就不能拿 <code>if</code> 當表達式用。
+</p>
+
+<div class="quiz">
+<div class="q">小測驗：<code>fn square(n: i32) -&gt; i32 { n * n; }</code> 這樣寫，<code>cargo run</code> 會發生什麼事？（用 3 個字回答，例如「會編譯錯」或「正常執行」這種長度）</div>
+<input type="text" id="q1" placeholder="你的答案">
+<button onclick="checkQ1()">檢查</button>
+<div class="feedback" id="q1-feedback"></div>
+</div>
+
+<script>
+function checkQ1() {
+  const val = document.getElementById('q1').value.trim();
+  const fb = document.getElementById('q1-feedback');
+  const normalized = val.replace(/\s/g, '');
+  if (['會編譯錯', '編譯會錯', '無法編譯', '編譯失敗'].some(a => normalized.includes(a.replace(/\s/g,'')))) {
+    fb.textContent = '對！n * n; 加了分號變成陳述式，函式實際回傳的是 ()，跟宣告的 -> i32 對不上，編譯器會報型別錯誤。';
+    fb.className = 'feedback ok';
+  } else {
+    fb.textContent = '再想想：函式宣告了 -> i32，但函式最後一行加了分號會回傳什麼？跟宣告的型別對得上嗎？';
+    fb.className = 'feedback bad';
+  }
+}
+</script>
+
+<div class="win">
+<div class="kicker">這一課的成果</div>
+你現在能寫出帶參數與回傳值的函式、知道最後一行「沒有分號」的意義，也能用 <code>if</code>/<code>else</code> 當表達式直接產生值。下一課會進到「迴圈與集合」—— 讓程式能重複處理一批資料，這是寫任何檔案/清單處理工具的必備工具。
+</div>
+
+<p class="source">
+主要參考資料：<a href="https://doc.rust-lang.org/book/ch03-03-how-functions-work.html" target="_blank">The Rust Programming Language — 3.3 How Functions Work</a> 與 <a href="https://doc.rust-lang.org/book/ch03-05-control-flow.html" target="_blank">3.5 Control Flow</a>（官方書籍，繁中版：<a href="https://rust-lang.tw/book-tw/ch03-03-how-functions-work.html" target="_blank">rust-lang.tw</a>）。想動手練習更多小題，可以搭配 <a href="https://github.com/rust-lang/rustlings" target="_blank">Rustlings</a> 的 <code>functions</code> 與 <code>if</code> 單元。
+</p>
+
+<nav class="lesson-links">
+<a href="0002-variables-and-types.html">&larr; 上一課：變數與型別</a>
+<a href="0004-loops-and-collections.html">下一課：迴圈與集合 &rarr;</a>
+</nav>
+
+<p class="ask-agent">卡住了、或有任何看不懂的地方，直接問我（你的 AI 教學助手）就好 —— 隨時可以打斷這個流程提問。</p>
+
+</main>
+</body>
+</html>

@@ -1,0 +1,97 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="UTF-8">
+<title>Lesson 8 · 命令列參數與檔案</title>
+<link rel="stylesheet" href="../assets/style.css">
+</head>
+<body>
+<main>
+
+<div class="kicker">Lesson 0008 · Rust · CLI 工具養成路線</div>
+<h1>命令列參數與檔案</h1>
+<div class="byline">目標：能讓程式從命令列接收參數（例如檔名），並讀取該檔案的內容。</div>
+
+<p>
+前七課的程式都靠 <code>read_line</code> 跟使用者互動 —— 每次執行都要手動打字。真正的 CLI 工具通常是這樣用的：<code>my_tool some_file.txt</code>，參數直接跟在指令後面，程式啟動就知道要處理哪個檔案。這一課補上這塊：讀命令列參數、讀檔案內容。
+</p>
+
+<h2>讀命令列參數</h2>
+<pre><code>use std::env;
+
+fn main() {
+    let args: Vec&lt;String&gt; = env::args().collect();
+    println!("{:?}", args);
+}</code></pre>
+
+<div class="callout">
+<strong>逐行拆解：</strong>
+<ul>
+<li><code>env::args()</code> 回傳一個「可以走訪的東西（iterator）」，裡面是每一個命令列參數 —— iterator 之後有專門一課，這裡先只需要知道它可以 <code>.collect()</code> 成一個 <code>Vec&lt;String&gt;</code>。</li>
+<li><code>args[0]</code> 永遠是程式本身的路徑，不是使用者打的參數。<strong>第一個真正的參數是 <code>args[1]</code></strong> —— 例如執行 <code>cargo run -- report.txt</code>，<code>args[1]</code> 就是 <code>"report.txt"</code>。</li>
+</ul>
+</div>
+
+<div class="callout tip">
+<strong>用 <code>cargo run</code> 傳參數時，習慣上加一個 <code>--</code>：</strong> <code>cargo run -- report.txt</code>。準確地說：<code>cargo</code> 會把它認不出來的尾端參數自動轉交給你的程式，所以 <code>cargo run report.txt</code> 其實也能跑。<code>--</code> 是 Unix 慣例，意思是「選項到此結束，後面全部當成值」—— 它在參數開頭有 <code>-</code> 時才變成關鍵：<code>cargo run --version</code> 會被 <code>cargo</code> 自己吃掉，<code>cargo run -- --version</code> 才會把字串 <code>--version</code> 交給你的程式。建議一律加 <code>--</code>，這樣就不必每次判斷參數會不會被誤認。
+</div>
+
+<h2>讀檔案內容</h2>
+<pre><code>use std::env;
+use std::fs;
+
+fn main() {
+    let args: Vec&lt;String&gt; = env::args().collect();
+    let filename = &args[1];
+
+    match fs::read_to_string(filename) {
+        Ok(contents) =&gt; println!("檔案內容：\n{}", contents),
+        Err(_) =&gt; println!("讀不到檔案 {}，請確認路徑對不對。", filename),
+    }
+}</code></pre>
+
+<p>
+<code>fs::read_to_string(filename)</code> 回傳的也是 <code>Result</code> —— 檔案可能不存在、沒權限讀等等，都會是 <code>Err</code>。跟 Lesson 6 一樣，用 <code>match</code> 分開處理，而不是用 <code>.expect(...)</code> 讓程式直接當掉：檔案不存在對 CLI 工具來說是很常見的使用者錯誤，不是程式的 bug，不該讓程式崩潰。
+</p>
+
+<div class="quiz">
+<div class="q">小測驗：執行 <code>cargo run -- notes.txt</code>，<code>args[0]</code> 裡裝的是什麼？（用 3 個字回答，例如「程式路徑」這種長度）</div>
+<input type="text" id="q1" placeholder="你的答案">
+<button onclick="checkQ1()">檢查</button>
+<div class="feedback" id="q1-feedback"></div>
+</div>
+
+<script>
+function checkQ1() {
+  const val = document.getElementById('q1').value.trim();
+  const fb = document.getElementById('q1-feedback');
+  const normalized = val.replace(/\s/g, '');
+  if (['程式路徑', '執行檔路徑', '程式名稱', '執行檔名'].some(a => normalized.includes(a.replace(/\s/g,'')))) {
+    fb.textContent = '對！args[0] 永遠是程式本身的路徑，不是使用者打的參數 —— notes.txt 會是 args[1]。';
+    fb.className = 'feedback ok';
+  } else {
+    fb.textContent = '再想想：env::args() 收集到的第一個值，是使用者打的東西，還是程式自己？';
+    fb.className = 'feedback bad';
+  }
+}
+</script>
+
+<div class="win">
+<div class="kicker">這一課的成果</div>
+你現在能寫一個接收檔名當參數、讀取檔案內容、檔案不存在也不會崩潰的 CLI 工具 —— 這是 Lesson 7 那個互動式小工具的「無人值守」版本，也是絕大多數真實 CLI 工具的基本形狀：<code>tool 參數</code>，處理，印結果。
+</div>
+
+<p class="source">
+主要參考資料：<a href="https://doc.rust-lang.org/book/ch12-01-accepting-command-line-arguments.html" target="_blank">The Rust Programming Language — 12.1 Accepting Command Line Arguments</a> 與 <a href="https://doc.rust-lang.org/book/ch12-02-reading-a-file.html" target="_blank">12.2 Reading a File</a>（官方書籍，繁中版：<a href="https://rust-lang.tw/book-tw/ch12-01-accepting-command-line-arguments.html" target="_blank">rust-lang.tw</a>）。想動手練習更多小題，可以搭配 <a href="https://github.com/rust-lang/rustlings" target="_blank">Rustlings</a> 的 <code>clippy</code> 之外，官方 <code>minigrep</code> 專案教程也很值得跟著做一次。
+</p>
+
+<nav class="lesson-links">
+<a href="0007-building-a-small-tool.html">&larr; 上一課：整合一個小工具</a>
+<a href="0009-option-and-absent-values.html">下一課：Option 與缺席的值 &rarr;</a>
+</nav>
+
+<p class="ask-agent">卡住了、或有任何看不懂的地方，直接問我（你的 AI 教學助手）就好 —— 隨時可以打斷這個流程提問。</p>
+
+</main>
+</body>
+</html>

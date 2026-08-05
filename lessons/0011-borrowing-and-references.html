@@ -1,0 +1,327 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="UTF-8">
+<title>Lesson 11 · Borrowing：看，但不拿走</title>
+<link rel="stylesheet" href="../assets/style.css">
+<script src="../assets/quiz.js"></script>
+</head>
+<body>
+<main>
+
+<div class="kicker">Lesson 0011 · Rust · CLI 工具養成路線</div>
+<h1>Borrowing：看，但不拿走</h1>
+<div class="byline">目標：知道 <code>&amp;</code> 和 <code>&amp;mut</code> 各自在做什麼，看到 <code>cannot borrow ... as mutable</code> 這類訊息知道怎麼修，並且知道為什麼從 Lesson 4 開始就一直在寫 <code>&amp;</code>。</div>
+
+<p>
+你已經自己解出這一課了。
+</p>
+
+<p>
+上一課的作業要求你用 <code>clone</code> 修好 <code>E0382</code>。你沒有。你寫的是這個：
+</p>
+
+<pre><code>fn summarize(content: &amp;String) {          // ← 這裡加了 &amp;
+    println!("共 {} 行", content.lines().count());
+}
+
+summarize(&amp;content);                     // ← 這裡也加了 &amp;
+println!("{}", content);                 // ✅ 還能用</code></pre>
+
+<p>
+這就是編譯器在 <code>E0382</code> 底下提示的那條路：<code>consider changing this parameter type ... to borrow instead</code>。
+</p>
+
+<p>
+這一課要補的是：這個 <code>&amp;</code> 到底是什麼，以及它有什麼規則。
+</p>
+
+<h2>先講一個詞：引用</h2>
+
+<p>
+<code>&amp;content</code> 不是 <code>content</code> 本身。它是一個<strong>指向</strong> <code>content</code> 的東西。這個東西叫<strong>引用（reference）</strong>。
+</p>
+
+<p>
+把引用交給函式，叫做<strong>借用（borrow）</strong>。
+</p>
+
+<p>
+借用和移動的差別只有一件事：<strong>擁有者沒有變</strong>。
+</p>
+
+<pre><code>let content = String::from("hello");
+
+summarize(content);      // 移動：擁有者換成參數，content 失效
+summarize(&amp;content);     // 借用：擁有者還是 content，函式只是看一下</code></pre>
+
+<p>
+函式結束時，借來的引用消失，但字串不會被釋放 —— 因為引用從來沒有擁有它。上一課的第三條規則說「<strong>擁有者</strong>離開作用域時，值就被釋放」，借用者不是擁有者。
+</p>
+
+<h2>一個比喻：攤在桌上的筆記本</h2>
+
+<p>
+中文的「借」預設是<strong>借走</strong> —— 借書、借錢，東西離開你手上。Rust 的 borrow 不是這個意思。
+</p>
+
+<p>
+想成你把筆記本攤在桌上讓同事看。
+</p>
+
+<pre><code>let mut notes = String::from("會議記錄");
+
+review(&amp;notes);        // 同事在旁邊看，只能看
+edit(&amp;mut notes);      // 同事拿筆在上面加一行</code></pre>
+
+<p>
+兩種情況筆記本都還在你桌上，都還是你的。差別只在同事<strong>能不能動筆</strong>。
+</p>
+
+<p>
+真正把整本拿走的是移動：
+</p>
+
+<pre><code>consume(notes);        // 筆記本被整本拿走，你桌上沒了</code></pre>
+
+<p>
+這才是中文語感的「借走」。但 Rust 不叫它 borrow，叫 <strong>move</strong>，而且它連還都不還。
+</p>
+
+<div class="callout">
+<strong>三個詞的差別：</strong>
+<ul>
+<li><strong>move</strong> —— 東西真的離開了，原本的變數失效</li>
+<li><strong>borrow（<code>&amp;</code>）</strong> —— 東西沒動，只是給人看</li>
+<li><strong>mutable borrow（<code>&amp;mut</code>）</strong> —— 東西沒動，但給人動筆</li>
+</ul>
+「借」在 Rust 裡的重點是<strong>會還</strong>，不是會走。
+</div>
+
+<h2>還你一筆從 Lesson 4 欠到現在的帳</h2>
+
+<p>
+<a href="0004-loops-and-collections.html">Lesson 4</a> 你寫過這一行，當時我只說「先照著寫」：
+</p>
+
+<pre><code>for name in &amp;names {
+    println!("{}", name);
+}</code></pre>
+
+<p>
+現在它可以解釋了。<code>for</code> 迴圈會消耗它跑過的東西。如果寫成 <code>for name in names</code>，整個 <code>names</code> 就被移動進迴圈，跑完就沒了 —— 迴圈後面再用 <code>names</code> 會是 <code>E0382</code>。
+</p>
+
+<p>
+加上 <code>&amp;</code>，迴圈只是借來看，<code>names</code> 還在。
+</p>
+
+<p>
+同樣的，Lesson 8 的 <code>&amp;args[1]</code> 也是借用 —— 你只想讀那個字串，不想把它從 <code>args</code> 裡搬出來。
+</p>
+
+<h2>需要改東西的時候：<code>&amp;mut</code></h2>
+
+<p>
+借來看是 <code>&amp;</code>。借來<strong>改</strong>是 <code>&amp;mut</code>。
+</p>
+
+<pre><code>fn add_line(s: &amp;mut String) {
+    s.push_str("\n新的一行");
+}
+
+fn main() {
+    let mut text = String::from("原本的內容");
+    add_line(&amp;mut text);
+    println!("{}", text);          // 原本的內容 + 新的一行
+}</code></pre>
+
+<p>
+三個地方都要寫 <code>mut</code>，少一個就編不過。少了 <code>let mut</code> 會是這樣：
+</p>
+
+<pre><code>error[E0596]: cannot borrow `text` as mutable, as it is not declared as mutable
+  |
+5 |     let text = String::from("原本的內容");
+6 |     add_line(&amp;mut text);
+  |              ^^^^^^^^^ cannot borrow as mutable
+  |
+help: consider changing this to be mutable
+  |
+5 |     let mut text = String::from("原本的內容");
+  |         +++</code></pre>
+
+<p>
+這個錯誤訊息直接告訴你要加什麼、加在哪。照做就好。
+</p>
+
+<h2>兩條借用規則</h2>
+
+<div class="callout">
+在任何一個時間點，一個值可以有：
+<ul>
+<li><strong>任意多個</strong> <code>&amp;</code>（唯讀借用），<strong>或者</strong></li>
+<li><strong>剛好一個</strong> <code>&amp;mut</code>（可改借用）</li>
+</ul>
+兩者不能同時存在。
+</div>
+
+<p>
+回到筆記本，這條規則就不是抽象規定了：
+</p>
+
+<p>
+<strong>很多人可以同時看。</strong>五個人圍著看同一本筆記，沒問題 —— 反正沒人在改。
+</p>
+
+<p>
+<strong>只能一個人動筆。</strong>兩個人同時在同一行寫字，會寫成一團亂。
+</p>
+
+<p>
+<strong>有人在動筆的時候，別人不能看。</strong>這條最反直覺，但也最實際：他正在把第三頁撕下來重寫，你這時候讀第三頁，讀到的是半成品。
+</p>
+
+<p>
+違反第一種：
+</p>
+
+<pre><code>let mut text = String::from("hello");
+let r1 = &amp;text;                 // 借來看
+text.push_str(" world");        // 同時想改
+println!("{}", r1);             // 而且看的人還在用</code></pre>
+
+<pre><code>error[E0502]: cannot borrow `text` as mutable because it is also borrowed as immutable
+  |
+3 |     let r1 = &amp;text;
+  |              ----- immutable borrow occurs here
+4 |     text.push_str(" world");
+  |     ^^^^^^^^^^^^^^^^^^^^^^^ mutable borrow occurs here
+5 |     println!("{}", r1);
+  |                    -- immutable borrow later used here</code></pre>
+
+<p>
+違反第二種：
+</p>
+
+<pre><code>let mut text = String::from("hello");
+let r1 = &amp;mut text;
+let r2 = &amp;mut text;             // 第二個可改借用
+println!("{} {}", r1, r2);</code></pre>
+
+<pre><code>error[E0499]: cannot borrow `text` as mutable more than once at a time
+  |
+3 |     let r1 = &amp;mut text;
+  |              --------- first mutable borrow occurs here
+4 |     let r2 = &amp;mut text;
+  |              ^^^^^^^^^ second mutable borrow occurs here</code></pre>
+
+<h2>為什麼要有這兩條規則</h2>
+
+<p>
+回想上一課：<code>String</code> 可以增長。<code>push_str</code> 如果發現原本那塊記憶體不夠大，會另外找一塊更大的，把內容搬過去，然後把舊的釋放掉。
+</p>
+
+<p>
+如果這時候有一個 <code>&amp;</code> 還指著舊位置，它就指向一塊已經被釋放的記憶體。讀它會拿到垃圾，或是直接讓程式崩潰。
+</p>
+
+<p>
+這叫<strong>資料競爭（data race）</strong>：兩個地方同時碰同一份資料，其中至少一個在改，而且沒有講好順序。
+</p>
+
+<p>
+在 C++ 或 Go 裡，這種 bug 會在執行時出現，而且時機不固定，非常難查。Rust 在編譯時就擋掉。
+</p>
+
+<p>
+這就是上一課那句話的完整版：<strong>Rust 把炸點從執行時搬到編譯時。</strong>
+</p>
+
+<div class="callout tip">
+<strong>借用的範圍到「最後一次使用」為止</strong>，不是到大括號結尾。所以這段是合法的：
+<pre><code>let r1 = &amp;text;
+println!("{}", r1);             // r1 最後一次使用，借用在這裡結束
+text.push_str(" world");        // ✅ 現在沒人在看了</code></pre>
+把 <code>E0502</code> 那段的第 4、5 行對調就能編過。錯誤訊息裡的 <code>immutable borrow later used here</code> 指的就是這件事。
+</div>
+
+<div class="quiz" data-mcq data-answer="3">
+<div class="q">小測驗一：<code>fn show(s: &amp;String)</code> 執行完之後，傳進去的那個字串怎麼了？</div>
+<div class="choices">
+<button>已經被釋放了，因為參數離開了作用域</button>
+<button>已經失效了，原本的變數不能再使用</button>
+<button>還在，原本的變數仍然是它的擁有者</button>
+</div>
+<div class="feedback"
+     data-ok="對。借用不轉移所有權。只有擁有者離開作用域才會觸發釋放，而借用者從來不是擁有者。"
+     data-bad="回去看第三條所有權規則：釋放的條件是「擁有者」離開作用域。&amp;String 是擁有者嗎？"></div>
+</div>
+
+<div class="quiz" data-mcq data-answer="1">
+<div class="q">小測驗二：同一個值同一時間，下面哪一種組合是編譯器允許的？</div>
+<div class="choices">
+<button>三個 &amp; 借用，沒有任何 &amp;mut 借用</button>
+<button>兩個 &amp;mut 借用，沒有任何 &amp; 借用</button>
+<button>一個 &amp;mut 借用，加上一個 &amp; 借用</button>
+</div>
+<div class="feedback"
+     data-ok="對。唯讀借用要幾個都行。限制只落在可改借用：要嘛剛好一個，要嘛沒有。"
+     data-bad="規則是「任意多個 &amp; 」或「剛好一個 &amp;mut」，兩者不能並存。用這句話檢查每個選項。"></div>
+</div>
+
+<div class="quiz" data-mcq data-answer="1">
+<div class="q">小測驗三：下面這段編不過，編譯器說 <code>cannot borrow `text` as mutable because it is also borrowed as immutable</code>。最省事的修法是哪一個？
+<pre><code>let mut text = String::from("hello");
+let r1 = &amp;text;
+text.push_str(" world");
+println!("{}", r1);</code></pre></div>
+<div class="choices">
+<button>把最後那行 println! 往上搬到 push_str 前面</button>
+<button>把 r1 那行的 &amp;text 改寫成 &amp;mut text 就一致了</button>
+<button>把第一行的 let mut text 改成 let text 去掉衝突</button>
+</div>
+<div class="feedback"
+     data-ok="對。借用的範圍到最後一次使用為止 —— println! 搬上去，r1 的借用在 push_str 之前就結束了，兩者不再重疊。什麼都不用改，只是換順序。"
+     data-bad="回想那個 tip：借用什麼時候結束？不是大括號結尾，是最後一次使用。那要讓兩個借用不重疊，最簡單的動作是什麼？"></div>
+</div>
+
+<h2>換你動手</h2>
+
+<p>
+在 <code>hello_cli</code> 上加一個會<strong>修改</strong>字串的函式。這次要用到 <code>&amp;mut</code>。
+</p>
+
+<div class="callout">
+<strong>目標：</strong>在印出檔案內容之前，先在最前面加一行標題。
+<ul>
+<li>寫 <code>fn add_title(content: &amp;mut String, filename: &amp;String)</code>，讓它在 <code>content</code> 最前面插入一行 <code>=== 檔名 ===</code>。（提示：<code>String</code> 有 <code>insert_str(0, ...)</code>。）</li>
+<li>在 <code>Ok</code> 那條分支呼叫它，然後印出 <code>content</code>。你會需要改 <code>Ok(content)</code> 那個綁定 —— 想一下要加什麼字。</li>
+<li>然後<strong>故意做錯</strong>：在呼叫 <code>add_title</code> <em>之前</em>先寫 <code>let peek = &amp;content;</code>，並且在呼叫<em>之後</em>才 <code>println!("{}", peek);</code>。跑一次，你應該看到 <code>cannot borrow `content` as mutable because it is also borrowed as immutable</code>。確認你能指出訊息裡哪一行是 <code>immutable borrow later used here</code>。</li>
+<li>最後把 <code>peek</code> 那兩行刪掉，讓程式跑通。</li>
+</ul>
+</div>
+
+<p>
+成功條件：<code>cargo run -- notes.txt</code> 印出標題行加上三行內容，而且沒給參數、給錯檔名這兩條路徑仍然不會 panic。
+</p>
+
+<div class="win">
+<div class="kicker">這一課的成果</div>
+Rust 記憶體模型最難的那一段結束了。你看到 <code>cannot borrow ...</code> 開頭的訊息時，知道它在講哪條規則被違反、以及怎麼修。所有權、移動、借用是三個連在一起的機制，你現在三個都懂了。這也是為什麼 Rust 不需要垃圾回收，卻仍然保證不會有 use-after-free 和資料競爭。從這裡開始，你看 Rust 程式碼裡滿滿的 <code>&amp;</code> 不會再覺得是噪音 —— 每一個都在說「我只要看，不要拿走」。速查表：<a href="../reference/ownership-and-borrowing.html">所有權與借用參考卡</a>。
+</div>
+
+<p class="source">
+主要參考資料：<a href="https://doc.rust-lang.org/book/ch04-02-references-and-borrowing.html" target="_blank">The Rust Programming Language — 4.2 References and Borrowing</a>（繁中版：<a href="https://rust-lang.tw/book-tw/ch04-02-references-and-borrowing.html" target="_blank">rust-lang.tw</a>）。想做練習題可以搭配 <a href="https://github.com/rust-lang/rustlings" target="_blank">Rustlings</a> 的 <code>move_semantics</code> 後半段。
+</p>
+
+<nav class="lesson-links">
+<a href="0010-ownership-and-move.html">&larr; 上一課：Ownership：值只有一個主人</a>
+<a href="0012-string-and-str.html">下一課：String 與 &amp;str：兩種字串 &rarr;</a>
+</nav>
+
+<p class="ask-agent">卡住了、或有任何看不懂的地方，直接問我（你的 AI 教學助手）就好 —— 隨時可以打斷這個流程提問。</p>
+
+</main>
+</body>
+</html>

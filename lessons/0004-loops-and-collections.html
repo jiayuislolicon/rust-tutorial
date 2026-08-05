@@ -1,0 +1,105 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="UTF-8">
+<title>Lesson 4 · 迴圈與集合</title>
+<link rel="stylesheet" href="../assets/style.css">
+</head>
+<body>
+<main>
+
+<div class="kicker">Lesson 0004 · Rust · CLI 工具養成路線</div>
+<h1>迴圈與集合</h1>
+<div class="byline">目標：能用 <code>for</code> 重複處理一批資料，並用 <code>Vec</code> 存放、新增一組動態長度的資料。</div>
+
+<p>
+前兩課處理了「存單一份資料」跟「依條件分支」。這一課處理「一批資料」—— 任何 CLI 工具讀取一份清單、逐行處理檔案、統計一堆輸入，都需要這兩樣東西：能重複跑的迴圈，跟能裝一堆東西的容器。
+</p>
+
+<h2><code>for</code>：走訪一個範圍或集合</h2>
+<pre><code>fn main() {
+    for n in 1..=5 {
+        println!("n = {}", n);
+    }
+}</code></pre>
+<p>
+<code>1..=5</code> 是一個「範圍（range）」，包含 1 到 5（含尾）；如果寫 <code>1..5</code>（不含 <code>=</code>），就是 1 到 4，不含 5。<code>for</code> 會自動走訪這個範圍裡的每個值，不需要自己維護計數器。
+</p>
+
+<div class="callout tip">
+<strong>為什麼優先用 <code>for</code>，不是 <code>while</code>？</strong> Rust 也有 <code>while</code>（條件為真就繼續跑），但走訪固定範圍或集合時，<code>for</code> 不用自己手動加計數器，也不會有「忘了 +1 造成無窮迴圈」這種錯誤。<code>while</code> 留給「不知道要跑幾次、要看某個條件」的情況（例如「一直讀輸入直到使用者按 Ctrl+D」）。
+</div>
+
+<h2><code>Vec</code>：長度可變的清單</h2>
+<p>
+上一課的型別（<code>i32</code>、<code>String</code>...）都只裝一個值。<code>Vec&lt;T&gt;</code>（唸作 "vector"）是最常用的集合型別，裝一串同型別的值，長度可以動態增減：
+</p>
+<pre><code>fn main() {
+    let mut names = Vec::new();
+    names.push(String::from("alice"));
+    names.push(String::from("bob"));
+
+    for name in &names {
+        println!("{}", name);
+    }
+}</code></pre>
+
+<div class="callout tip">
+<strong>Vec 跟 array 是同一類概念嗎？</strong> 是，兩個都存一串同型別的值，差在<strong>長度固不固定</strong>。Array（<code>[i32; 3]</code>）長度是型別的一部分，編譯時就固定，不能之後 push/pop；<code>Vec&lt;T&gt;</code> 長度可以動態增減，資料放在 heap 上。寫 CLI 工具時幾乎都用 <code>Vec</code> —— 因為讀進來的檔案有幾行、使用者給了幾個參數，通常是執行時才知道的數量。Array 留給你確定數量永遠固定的情況（例如棋盤座標 <code>[u8; 8]</code>）。
+</div>
+
+<div class="callout">
+<strong>幾個要注意的地方：</strong>
+<ul>
+<li><code>Vec::new()</code> 建一個空的 vector；因為之後要 <code>push</code>，前面要加 <code>mut</code>。</li>
+<li><code>names.push(...)</code> 把值加到尾端。</li>
+<li><code>for name in &amp;names</code> 前面的 <code>&amp;</code> 代表「借用（borrow）」—— 只是看一眼裡面的每個元素，不會把 <code>names</code> 拿走、之後 <code>names</code> 還能繼續用。借用的細節之後有專門一課，現在先記得「走訪集合時通常要加 <code>&amp;</code>」。</li>
+</ul>
+</div>
+
+<p>也可以用簡寫，一次建好初始內容：</p>
+<pre><code>let scores = vec![10, 20, 30];
+for s in &scores {
+    println!("score = {}", s);
+}</code></pre>
+
+<div class="quiz">
+<div class="q">小測驗：<code>for n in 1..3 { println!("{}", n); }</code> 會印出幾行？（用阿拉伯數字回答，例如「1」）</div>
+<input type="text" id="q1" placeholder="你的答案">
+<button onclick="checkQ1()">檢查</button>
+<div class="feedback" id="q1-feedback"></div>
+</div>
+
+<script>
+function checkQ1() {
+  const val = document.getElementById('q1').value.trim();
+  const fb = document.getElementById('q1-feedback');
+  if (val === '2') {
+    fb.textContent = '對！1..3 不含 3（不含尾），所以是 1、2 兩行。想含 3 要寫 1..=3。';
+    fb.className = 'feedback ok';
+  } else {
+    fb.textContent = '再想想：1..3 這個範圍有沒有 = 符號？含尾跟不含尾差在哪？';
+    fb.className = 'feedback bad';
+  }
+}
+</script>
+
+<div class="win">
+<div class="kicker">這一課的成果</div>
+你現在能用 <code>for</code> 走訪範圍與 <code>Vec</code>、能用 <code>Vec::new()</code> + <code>push</code> 動態組出一份清單。下一課會進到「讀取使用者輸入」—— 讓程式能真的跟外界互動，這是把前面所有東西串成一個可執行 CLI 工具的關鍵一步。
+</div>
+
+<p class="source">
+主要參考資料：<a href="https://doc.rust-lang.org/book/ch03-05-control-flow.html#looping-through-a-collection-with-for" target="_blank">The Rust Programming Language — 3.5 Control Flow（for 迴圈）</a>與 <a href="https://doc.rust-lang.org/book/ch08-01-vectors.html" target="_blank">8.1 Storing Lists of Values with Vectors</a>（官方書籍，繁中版：<a href="https://rust-lang.tw/book-tw/ch08-01-vectors.html" target="_blank">rust-lang.tw</a>）。想動手練習更多小題，可以搭配 <a href="https://github.com/rust-lang/rustlings" target="_blank">Rustlings</a> 的 <code>loops</code> 與 <code>vecs</code> 單元。
+</p>
+
+<nav class="lesson-links">
+<a href="0003-functions-and-branching.html">&larr; 上一課：函式與分支</a>
+<a href="0005-reading-user-input.html">下一課：讀取使用者輸入 &rarr;</a>
+</nav>
+
+<p class="ask-agent">卡住了、或有任何看不懂的地方，直接問我（你的 AI 教學助手）就好 —— 隨時可以打斷這個流程提問。</p>
+
+</main>
+</body>
+</html>
