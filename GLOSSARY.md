@@ -45,7 +45,10 @@ An unconditional loop that repeats forever until a `break` is hit. `break value`
 The region in which a variable exists — normally the pair of curly braces `{ }` enclosing it. Once execution leaves those braces the variable is gone; using it afterwards is `E0425: cannot find value in this scope`. When a variable holding a `String` goes out of scope, its memory is handed back to the system automatically ("freed"). No explicit free call is ever written — this is how Rust avoids needing a garbage collector.
 
 **Trait**:
-A marker saying "this type has a certain capability." Introduced at this level only: a type either carries a given trait or it doesn't (e.g. `Copy`). Defining and implementing traits is a later lesson.
+A marker saying "this type has a certain capability." A type either carries a given trait or it doesn't (e.g. `Copy`). You *implement* a trait for a type with `impl TraitName for TypeName { ... }`, filling in whatever functions the trait requires. See [[Display trait]] for a concrete example.
+
+**`Display` trait**:
+The trait that controls what a value prints as with the `{}` placeholder. Implement it with `impl std::fmt::Display for TypeName { fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result { write!(f, "...", ...) } }` — `write!` works like `format!` but writes into `f` instead of returning a `String`. Once implemented, `println!("{}", value)` and `value.to_string()` both just work. `io::Error` (the type behind `Err(error)` from `fs::read_to_string`) already implements `Display`, which is why `{}` could print it directly.
 
 **Ownership**:
 Rust's memory management model, governed by three rules: every value has one owner; there is only ever one owner at a time; when the owner goes out of scope, the value is freed. This is why Rust needs neither a garbage collector nor manual `free` calls.
@@ -100,3 +103,27 @@ The Unix convention for "end of options — everything after this is a value, no
 
 **`fs::read_to_string`**:
 Reads an entire file's contents into a `String`. Returns a `Result` (file may not exist, may lack permissions), so handle it with `match` rather than `.expect(...)` when a missing file is an expected user error, not a bug.
+
+**`struct`**:
+Defines a new type by grouping related named values, each called a **field** (欄位), each with its own type. The definition alone produces no data — it's a blueprint. An instance is created with `TypeName { field: value, ... }`; access a field with `.`. Prefer `String` over `&str` for fields unless you're ready to name a lifetime (see [[String vs &str]]).
+
+**`impl` block**:
+`impl TypeName { ... }` — where functions "belonging to" a type are defined. Holds two kinds of function, told apart only by whether the first parameter is `self`: a [[method]] has it, an [[associated function]] doesn't.
+
+**Method**:
+A function defined inside an `impl` block whose first parameter is `self` (as `&self`, `&mut self`, or `self`). Called with `value.method()` — the value before the dot becomes `self` automatically, so it isn't passed again explicitly. `&self` reads fields, `&mut self` writes them, bare `self` consumes the value; same borrowing rules as any other [[borrow]].
+
+**Associated function**:
+A function defined inside an `impl` block with no `self` parameter. Called with `TypeName::function()`, not with a dot. `String::from`, `String::new`, and `Vec::new` are all associated functions — `new` is a naming convention for "build an instance," not a keyword.
+
+**Lifetime (生命週期) / `'static`**:
+An annotation describing *how long* a reference is valid for — a topic this workspace hasn't formally covered yet. `'static` is the special case meaning "valid for the entire program" (e.g. string literals like `"空行"`, baked into the executable). Named here only so it can be searched for; full lifetime syntax (`'a`, etc.) is a later lesson. Don't confuse with [[mutability]] — a `let mut` error (`E0596`) is about whether a value can be *changed*, not about how long a reference *lives*.
+
+**Tuple（元組）**:
+A fixed-size grab-bag of values, possibly of different types, written `(a, b, c)`. The type is written the same way: `(i32, i32)`. Access an element by position with `.0`, `.1`, `.2`, ... (zero-indexed) — there is no name, only a slot number. Useful for a function that needs to return more than one value without defining a whole [[struct]] for it: `fn f() -> (usize, usize)`. Destructure on the caller's side with `let (a, b) = f();`.
+
+**Custom error type**:
+An [[enum]] you define yourself, with one variant per way your program can fail, used as the `E` in `Result<T, E>`. Lets one function report several distinct failure reasons (e.g. "file not found" vs "file was empty") through a single return type, instead of every caller inventing its own strings. Give it a [[Display trait]] implementation so `Err(e)` prints a clean message with `{}`.
+
+**`enum`**:
+Defines a type by listing the fixed set of shapes a value can take — a **variant**. A value is always exactly one variant, never several at once. Contrast with [[struct]]: struct combines fields together (AND), enum picks one variant among several (OR). A variant can carry its own data, e.g. `Some(T)` in [[Option]] or `Ok(T)`/`Err(E)` in [[Result]] — both are ordinary enums you've used since early lessons, just without seeing the `enum` keyword behind them. [[match]] is how you branch on which variant a value is, pulling out any data the variant carries at the same time.

@@ -1,0 +1,132 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="UTF-8">
+<title>Lesson 15 · 複習：釐清容易混淆的概念</title>
+<link rel="stylesheet" href="../assets/style.css">
+<script src="../assets/quiz.js"></script>
+</head>
+<body>
+<main>
+
+<div class="kicker">Lesson 0015 · Rust · 複習課，不教新東西</div>
+<h1>複習：釐清容易混淆的概念</h1>
+<div class="byline">目標：把 Lesson 11～14 裡幾組容易混在一起的概念，重新拆開、各自釐清。這堂課沒有新知識，也沒有動手練習。</div>
+
+<p>
+這幾課教得很密集，幾個概念名字或語法有點像，容易黏在一起。這堂課把它們一組一組拆開，每組先自己回想一次再看答案。
+</p>
+
+<h2>第一組：可變性 vs 生命週期</h2>
+
+<p>
+這兩個是完全不同的軸，只是常常一起出現在同一個錯誤訊息附近。
+</p>
+
+<table style="width:100%; border-collapse: collapse; margin: 1em 0;">
+<tr style="text-align:left; border-bottom: 1px solid #ccc;"><th>&nbsp;</th><th>問的問題</th><th>錯誤代號</th><th>解法</th></tr>
+<tr><td><strong>可變性</strong>（mutability）</td><td>這個值能不能被<strong>改</strong>？</td><td><code>E0596</code></td><td>宣告時加 <code>let mut</code></td></tr>
+<tr><td><strong>生命週期</strong>（lifetime）</td><td>這個引用能<strong>活多久</strong>？</td><td><code>E0106</code></td><td>之後的課才教</td></tr>
+</table>
+
+<p>
+<code>report.add_title()</code> 報錯 <code>cannot borrow as mutable</code>，是因為 <code>report</code> 宣告時沒寫 <code>mut</code> —— 跟這個引用能活多久完全無關。<code>'static</code> 講的是「活到程式結束」，是生命週期，不是可變性。
+</p>
+
+<div class="quiz" data-mcq data-answer="2">
+<div class="q">小測驗：<code>let report = Report::new(...); report.add_title();</code> 報錯 <code>cannot borrow as mutable</code>，該加的是什麼？</div>
+<div class="choices">
+<button>一個生命週期標記 <code>'a</code></button>
+<button><code>mut</code>，改成 <code>let mut report</code></button>
+<button><code>&amp;'static</code></button>
+</div>
+<div class="feedback"
+     data-ok="對。這是可變性問題，跟生命週期無關。"
+     data-bad="再想一次：add_title 要改欄位，需要 &mut self。呼叫端的 report 有沒有辦法被改？"></div>
+</div>
+
+<h2>第二組：struct vs enum</h2>
+
+<p>
+一個字記住：<strong>struct 是「且」，enum 是「或」</strong>。
+</p>
+
+<pre><code>struct Report { filename: String, content: String }  // 同時擁有兩個欄位（且）
+enum LineKind { Empty, Comment, Code(String) }        // 只會是其中一個變體（或）</code></pre>
+
+<div class="quiz" data-mcq data-answer="1">
+<div class="q">小測驗：想表達「這個值只會是三種狀態之一，不會同時是兩種」，該用哪個？</div>
+<div class="choices">
+<button>enum</button>
+<button>struct</button>
+<button>tuple</button>
+</div>
+<div class="feedback"
+     data-ok="對。「只會是其中一種」是 enum 的定義性特徵。"
+     data-bad="回想 struct 跟 enum 的那句口號：一個是「且」，一個是「或」。哪個是「或」？"></div>
+</div>
+
+<h2>第三組：method vs 關聯函式</h2>
+
+<p>
+差別只看一件事：<strong>第一個參數有沒有 <code>self</code></strong>。
+</p>
+
+<pre><code>fn summary(&amp;self) -&gt; String { ... }         // 有 self → 方法，用 report.summary() 呼叫
+fn new(filename: &amp;str) -&gt; Report { ... }    // 沒 self → 關聯函式，用 Report::new(...) 呼叫</code></pre>
+
+<div class="quiz" data-mcq data-answer="3">
+<div class="q">小測驗：<code>String::from("hi")</code> 這個呼叫方式（用 <code>::</code>），代表 <code>from</code> 是哪一種？</div>
+<div class="choices">
+<button>方法，因為 String 是型別</button>
+<button>不確定，要看函式內部寫什麼</button>
+<button>關聯函式，因為呼叫時沒有「值.」在前面</button>
+</div>
+<div class="feedback"
+     data-ok="對。用 :: 呼叫、前面接的是型別名不是值，就是關聯函式。"
+     data-bad="回想判斷標準只有一個：呼叫語法是 值.f() 還是 型別::f()？"></div>
+</div>
+
+<h2>第四組：tuple vs struct</h2>
+
+<p>
+兩個都能把幾個值裝在一起，差別是<strong>有沒有名字</strong>。
+</p>
+
+<pre><code>(usize, usize, usize)                          // tuple：靠位置，取值用 .0 .1 .2
+struct Counts { empty: usize, comment: usize, code: usize }  // struct：靠名字，取值用 .empty</code></pre>
+
+<p>
+只是暫時要回傳兩三個值、彼此意義從上下文就看得出來，用 tuple 快速方便。如果這幾個值會被到處傳遞、名字容易搞混，換成 struct 更清楚——這也是為什麼 Lesson 13 把 <code>filename</code>/<code>content</code>/<code>line_count</code> 收成 <code>Report</code>，而不是繼續用三個獨立變數或一個 tuple。
+</p>
+
+<div class="quiz" data-text data-accept='["位置","順序"]'>
+<div class="q">小測驗：tuple 的 <code>.0</code>、<code>.1</code> 是靠什麼取值的？（兩個字，中文）</div>
+<input type="text" id="q4" placeholder="你的答案">
+<button>檢查</button>
+<div class="feedback"
+     data-ok="對，靠位置（第幾個）。struct 靠的是名字。"
+     data-bad="提示：跟 struct 的 .filename、.content 這種靠名字取值的方式，剛好相反。"></div>
+</div>
+
+<h2><code>impl</code> 怎麼跟 <code>struct</code> 對上的</h2>
+
+<p>
+最後複習一次容易誤解的一點：<code>impl Report</code> 跟 <code>struct Report</code> 是靠<strong>名字一樣</strong>對上的，跟兩段程式碼寫在檔案裡的哪個位置完全無關。一個 <code>struct</code> 也可以拆成好幾個 <code>impl</code> 區塊，不用全部擠在一起。
+</p>
+
+<div class="win">
+<div class="kicker">這一課的目的</div>
+沒有新技能要學，純粹把 Lesson 11～14 裡容易黏在一起的幾組概念重新拆乾淨：可變性 ≠ 生命週期、struct（且）≠ enum（或）、方法（<code>.</code>）≠ 關聯函式（<code>::</code>）、tuple（位置）≠ struct（名字）。下一課會開始教錯誤處理，這幾組概念都會繼續用到。
+</div>
+
+<nav class="lesson-links">
+<a href="0014-enums-and-data-modeling.html">&larr; 上一課：enum 與資料建模</a>
+<a href="0016-error-handling-and-custom-errors.html">下一課：錯誤處理與自訂錯誤型別 &rarr;</a>
+</nav>
+
+<p class="ask-agent">卡住了、或有任何看不懂的地方，直接問我（你的 AI 教學助手）就好 —— 隨時可以打斷這個流程提問。</p>
+
+</main>
+</body>
+</html>

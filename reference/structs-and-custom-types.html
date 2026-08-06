@@ -1,0 +1,75 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="UTF-8">
+<title>Reference · struct 與 impl</title>
+<link rel="stylesheet" href="../assets/style.css">
+</head>
+<body>
+<main>
+<div class="kicker">Reference · 速查表</div>
+<h1>struct 與 impl</h1>
+
+<h2>定義與建立</h2>
+<pre><code>struct Report {
+    filename: String,
+    content: String,
+    line_count: usize,
+}
+
+let report = Report {
+    filename: "notes.txt".to_string(),
+    content: content,      // 或簡寫 content，如果變數名跟欄位名一樣
+    line_count: 3,
+};
+
+report.filename     // . 取欄位
+report.content
+report.line_count</code></pre>
+
+<h2>欄位型別：優先用 String，不是 &amp;str</h2>
+<pre><code>struct Note { title: &amp;str }   // error[E0106]: missing lifetime specifier
+
+用 String 就不用管 lifetime —— struct 自己擁有內容。
+（詳見 reference/string-types.html）</code></pre>
+
+<h2>impl：方法 vs 關聯函式</h2>
+<pre><code>impl Report {
+    // 方法：第一個參數是 self，用 值.方法() 呼叫
+    fn summary(&amp;self) -&gt; String {
+        format!("{}：共 {} 行", self.filename, self.line_count)
+    }
+
+    fn add_title(&amp;mut self) {
+        let title = format!("=== {} ===\n", self.filename);
+        self.content.insert_str(0, &amp;title);
+    }
+
+    // 關聯函式：沒有 self，用 型別::函式() 呼叫
+    fn new(filename: &amp;str, content: String) -&gt; Report {
+        let line_count = content.lines().count();
+        Report { filename: filename.to_string(), content, line_count }
+    }
+}
+
+report.summary()        // 方法：用 .
+report.add_title()
+Report::new(name, body)  // 關聯函式：用 ::</code></pre>
+
+<h2><code>self</code> 三種寫法</h2>
+<pre><code>&amp;self       只讀欄位             （跟 Lesson 11 的 &amp; 同一套規則）
+&amp;mut self   要修改欄位
+self        整個值被吃掉不還      （少見）</code></pre>
+
+<h2>你早就在用的關聯函式</h2>
+<pre><code>String::from(...)   String::new()   Vec::new()
+都是「型別::函式」— 沒有 self，只是產生一個新實例。</code></pre>
+
+<p class="source">
+來源：<a href="https://doc.rust-lang.org/book/ch05-01-defining-structs.html" target="_blank">The Rust Book — 5.1 Defining and Instantiating Structs</a>、<a href="https://doc.rust-lang.org/book/ch05-03-method-syntax.html" target="_blank">5.3 Method Syntax</a>（繁中版：<a href="https://rust-lang.tw/book-tw/ch05-01-defining-structs.html" target="_blank">rust-lang.tw</a>）。
+對應課程：<a href="../lessons/0013-structs-and-custom-types.html">Lesson 13 · struct 與自訂型別</a>。相關：<a href="string-types.html">字串型別參考卡</a>、<a href="ownership-and-borrowing.html">所有權與借用參考卡</a>。
+</p>
+
+</main>
+</body>
+</html>

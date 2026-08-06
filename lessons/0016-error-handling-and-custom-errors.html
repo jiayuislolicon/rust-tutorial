@@ -1,0 +1,150 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="UTF-8">
+<title>Lesson 16 · 錯誤處理與自訂錯誤型別</title>
+<link rel="stylesheet" href="../assets/style.css">
+<script src="../assets/quiz.js"></script>
+</head>
+<body>
+<main>
+
+<div class="kicker">Lesson 0016 · Rust · CLI 工具養成路線</div>
+<h1>錯誤處理與自訂錯誤型別</h1>
+<div class="byline">目標：用一個自己定義的 enum 統一表達 <code>hello_cli</code> 所有可能的失敗原因，並讓它能用 <code>{}</code> 印出乾淨的錯誤訊息。</div>
+
+<p>
+現在 <code>hello_cli</code> 只有一種會失敗的情況：<code>fs::read_to_string</code> 讀不到檔案，回傳 <code>Err(error)</code>，<code>error</code> 是 <code>io::Error</code>。但真實的 CLI 工具通常不只一種失敗方式——比如檔案讀到了，但內容是空的，這也該算失敗，只是原因不同。現在這兩種失敗沒有共同的型別可以裝，只能各自處理。
+</p>
+
+<h2>用 enum 把失敗原因收在一起</h2>
+
+<p>
+Lesson 14 教過 enum 可以帶資料。錯誤處理正好用得上這個能力——定義一個自己的 enum，一個變體對應一種失敗原因：
+</p>
+
+<pre><code>enum AppError {
+    ReadFailed(std::io::Error),  // 讀檔失敗，把原始錯誤包起來
+    Empty,                       // 檔案是空的
+}</code></pre>
+
+<p>
+這就是<strong>自訂錯誤型別</strong>：把「這個函式可能會怎麼失敗」列成一個 enum，當作 <code>Result&lt;T, E&gt;</code> 裡的 <code>E</code>。呼叫端只要 <code>match</code> 這一個型別，就能處理所有失敗原因，不用再各自猜測。
+</p>
+
+<h2>讓它能印出來：<code>Display</code> trait</h2>
+
+<p>
+現在寫 <code>println!("{}", err)</code> 會直接編譯失敗。原因：<code>AppError</code> 還沒有人告訴它 <code>{}</code> 該印什麼字。
+</p>
+
+<p>
+先看 TypeScript 版本，概念完全對應：
+</p>
+
+<pre><code>// TypeScript
+interface Display {
+  fmt(): string;
+}
+class AppError implements Display {
+  fmt() { return "..."; }   // 這裡自己決定要印什麼
+}</code></pre>
+
+<p>
+<code>interface Display</code> 只規定「要有一個 <code>fmt</code>，回傳字串」，不管內容。<code>class AppError implements Display</code> 才是真正把 <code>fmt</code> 寫出來，決定印什麼字。
+</p>
+
+<p>
+Rust 的 <code>trait</code> 就是 TypeScript 的 <code>interface</code>；<code>impl Trait for Type</code> 就是 <code>implements</code>。同一件事，換一種語法：
+</p>
+
+<pre><code>use std::fmt;
+
+impl fmt::Display for AppError {
+    fn fmt(&amp;self, f: &amp;mut fmt::Formatter) -&gt; fmt::Result {
+        match self {
+            AppError::ReadFailed(e) =&gt; write!(f, "讀不到檔案：{}", e),
+            AppError::Empty =&gt; write!(f, "檔案是空的"),
+        }
+    }
+}</code></pre>
+
+<p>
+對照剛才的 TypeScript：<code>impl fmt::Display for AppError</code> 對應 <code>class AppError implements Display</code>。<code>fn fmt(&amp;self, f: ...) -&gt; fmt::Result</code> 這個函式的名字、參數、回傳型別，是 <code>Display</code> 規定好的，不能改——對應 TS 那邊 <code>fmt(): string</code> 的簽名。函式<strong>裡面</strong>的 <code>match self { ... }</code>，才是你自己決定要印什麼，對應 TS 那邊 <code>{ return "..."; }</code>。
+</p>
+
+<div class="callout tip">
+<code>write!(f, ...)</code> 跟 <code>println!(...)</code> 語法幾乎一樣，差別是它把結果寫進 <code>f</code>，不是直接印到畫面上。記住「<code>match self</code>，每個變體 <code>write!</code> 一句話」就夠用。
+</div>
+
+<p>
+一個小提醒：<code>impl Report</code>（沒有 <code>for</code>）是幫 <code>Report</code> 加方法，跟 trait 無關。<code>impl Display for AppError</code>（有 <code>for</code>）才是「實作一個 trait」。看到 <code>for</code> 就知道這是在填別人規定好的介面，不是在加自己的新方法。
+</p>
+
+<p>
+填完 <code>fmt</code> 之後，<code>println!("{}", err)</code>、<code>err.to_string()</code> 都會自動去呼叫你寫的這個 <code>fmt</code>。
+</p>
+
+<p>
+你其實一直在受益於別人寫好的 <code>Display</code> 實作：<code>io::Error</code> 早就實作了 <code>Display</code>，這就是為什麼 <code>println!("讀不到檔案 {}：{}", filename, error)</code> 這行程式碼一直能正常印出訊息。
+</p>
+
+<div class="quiz" data-mcq data-answer="2">
+<div class="q">小測驗一：為什麼 <code>hello_cli</code> 要自己定義 <code>AppError</code>，而不是繼續讓每個函式各自回傳 <code>io::Error</code> 或字串？</div>
+<div class="choices">
+<button>因為 io::Error 效能比較差</button>
+<button>因為一個型別能同時裝下好幾種失敗原因，呼叫端只要 match 一次</button>
+<button>因為 enum 是 Rust 唯一可以當作錯誤型別的東西</button>
+</div>
+<div class="feedback"
+     data-ok="對。自訂錯誤型別的價值就是把多種失敗原因收進同一個 E，match 一次處理完。"
+     data-bad="想想「檔案讀不到」跟「檔案是空的」，這兩種失敗原因目前有沒有共同的型別可以裝？"></div>
+</div>
+
+<div class="quiz" data-mcq data-answer="1">
+<div class="q">小測驗二：<code>println!("{}", err)</code> 要能正常印出 <code>err</code>，<code>err</code> 的型別必須符合什麼條件？</div>
+<div class="choices">
+<button>實作了 Display trait</button>
+<button>是一個 enum</button>
+<button>有 &amp;self 當作第一個參數的方法</button>
+</div>
+<div class="feedback"
+     data-ok="對。{} 印什麼，是由 Display trait 的 fmt 決定的，跟型別是不是 enum 無關。"
+     data-bad="回想 AppError 一開始為什麼印不出來——缺的是哪個 trait 的實作？"></div>
+</div>
+
+<h2>換你動手</h2>
+
+<div class="callout">
+<strong>四個步驟：</strong>
+<ul>
+<li>在 <code>main.rs</code> 最上面定義 <code>enum AppError { ReadFailed(std::io::Error), Empty }</code>。</li>
+<li>幫 <code>AppError</code> 實作 <code>impl std::fmt::Display for AppError</code>，兩個變體各自 <code>write!</code> 一句中文錯誤訊息。</li>
+<li>寫一個新函式 <code>fn load_report(filename: &amp;str) -&gt; Result&lt;Report, AppError&gt;</code>：用 <code>match fs::read_to_string(filename)</code> 判斷——<code>Err(e)</code> 就回傳 <code>Err(AppError::ReadFailed(e))</code>；<code>Ok(content)</code> 但 <code>content.trim().is_empty()</code> 就回傳 <code>Err(AppError::Empty)</code>；否則回傳 <code>Ok(Report::new(filename, content))</code>。</li>
+<li>把 <code>main</code> 裡原本的 <code>match fs::read_to_string(filename) { ... }</code> 換成 <code>match load_report(filename) { Ok(mut report) =&gt; { ... }, Err(err) =&gt; println!("{}", err) }</code>，其他邏輯（<code>add_title</code>、<code>summary</code>、<code>count_kinds</code>）搬進 <code>Ok</code> 分支裡。</li>
+</ul>
+</div>
+
+<p>
+成功條件：<code>cargo run -- notes.txt</code> 對存在且有內容的檔案照常運作；對不存在的檔案印出「讀不到檔案：...」；對一個內容全空白的檔案（可以用 <code>cargo run -- empty.txt</code> 搭配一個空檔案測試）印出「檔案是空的」。
+</p>
+
+<div class="win">
+<div class="kicker">這一課的成果</div>
+<code>hello_cli</code> 現在有一個真正的錯誤型別，把「讀不到檔案」「檔案是空的」這兩種不同失敗原因收在同一個 <code>Result</code> 裡，呼叫端一次 <code>match</code> 就能處理完，訊息還印得乾淨。這直接對應 <code>MISSION.md</code>「處理錯誤而不 panic」這條成功標準——而且是用 struct、enum、trait 三個東西一起搭出來的，不是孤立的語法練習。速查表：<a href="../reference/error-handling-and-custom-errors.html">錯誤處理與自訂錯誤型別參考卡</a>。
+</div>
+
+<p class="source">
+主要參考資料：<a href="https://doc.rust-lang.org/book/ch09-00-error-handling.html" target="_blank">The Rust Programming Language — 9. Error Handling</a> 與 <a href="https://doc.rust-lang.org/std/fmt/trait.Display.html" target="_blank">std::fmt::Display 官方文件</a>（繁中版：<a href="https://rust-lang.tw/book-tw/ch09-00-error-handling.html" target="_blank">rust-lang.tw</a>）。
+</p>
+
+<nav class="lesson-links">
+<a href="0015-review-common-mixups.html">&larr; 上一課：複習：釐清容易混淆的概念</a>
+<span>下一課：待訂 &rarr;</span>
+</nav>
+
+<p class="ask-agent">卡住了、或有任何看不懂的地方，直接問我（你的 AI 教學助手）就好 —— 隨時可以打斷這個流程提問。</p>
+
+</main>
+</body>
+</html>

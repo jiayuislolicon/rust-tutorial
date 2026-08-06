@@ -1,0 +1,51 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="UTF-8">
+<title>Reference · enum 與 match</title>
+<link rel="stylesheet" href="../assets/style.css">
+</head>
+<body>
+<main>
+<div class="kicker">Reference · 速查表</div>
+<h1>enum 與 match</h1>
+
+<h2>定義與建立</h2>
+<pre><code>enum LineKind {
+    Empty,
+    Comment,
+    Code(String),   // 變體可以帶資料，也可以不帶
+}
+
+let a = LineKind::Empty;          // 建立值用 ::
+let b = LineKind::Code("fn main".to_string());</code></pre>
+
+<h2>struct 是「且」，enum 是「或」</h2>
+<pre><code>struct Report { filename: String, content: String }  // 同時擁有全部欄位
+enum LineKind { Empty, Comment, Code(String) }        // 只會是其中一個變體</code></pre>
+
+<h2>match：一定要列完所有變體</h2>
+<pre><code>match kind {
+    LineKind::Empty =&gt; println!("空行"),
+    LineKind::Comment =&gt; println!("註解"),
+    LineKind::Code(text) =&gt; println!("程式碼：{}", text),  // 順便取出資料
+}
+// 少列一個變體 =&gt; 編譯失敗，不是執行期才出錯</code></pre>
+
+<h2>你早就在用的 enum</h2>
+<pre><code>Option&lt;T&gt;   =   Some(T)  |  None
+Result&lt;T, E&gt; =  Ok(T)    |  Err(E)
+
+match opt {
+    Some(value) =&gt; ...,   // 帶資料的變體
+    None =&gt; ...,          // 空變體
+}</code></pre>
+
+<p class="source">
+來源：<a href="https://doc.rust-lang.org/book/ch06-01-defining-an-enum.html" target="_blank">The Rust Book — 6.1 Defining an Enum</a>、<a href="https://doc.rust-lang.org/book/ch06-02-match.html" target="_blank">6.2 The match Control Flow Construct</a>（繁中版：<a href="https://rust-lang.tw/book-tw/ch06-01-defining-an-enum.html" target="_blank">rust-lang.tw</a>）。
+對應課程：<a href="../lessons/0014-enums-and-data-modeling.html">Lesson 14 · enum 與資料建模</a>。相關：<a href="structs-and-custom-types.html">struct 與 impl 參考卡</a>。
+</p>
+
+</main>
+</body>
+</html>

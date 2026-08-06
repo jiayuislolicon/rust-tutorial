@@ -1,0 +1,60 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="UTF-8">
+<title>Reference · 錯誤處理與自訂錯誤型別</title>
+<link rel="stylesheet" href="../assets/style.css">
+</head>
+<body>
+<main>
+<div class="kicker">Reference · 速查表</div>
+<h1>錯誤處理與自訂錯誤型別</h1>
+
+<h2>自訂錯誤型別：一個 enum，一種失敗一個變體</h2>
+<pre><code>enum AppError {
+    ReadFailed(std::io::Error),
+    Empty,
+}
+
+fn load_report(filename: &amp;str) -&gt; Result&lt;Report, AppError&gt; {
+    match std::fs::read_to_string(filename) {
+        Err(e) =&gt; Err(AppError::ReadFailed(e)),
+        Ok(content) if content.trim().is_empty() =&gt; Err(AppError::Empty),
+        Ok(content) =&gt; Ok(Report::new(filename, content)),
+    }
+}</code></pre>
+
+<h2>實作 Display：讓 {} 知道怎麼印</h2>
+<pre><code>use std::fmt;
+
+impl fmt::Display for AppError {
+    fn fmt(&amp;self, f: &amp;mut fmt::Formatter) -&gt; fmt::Result {
+        match self {
+            AppError::ReadFailed(e) =&gt; write!(f, "讀不到檔案：{}", e),
+            AppError::Empty =&gt; write!(f, "檔案是空的"),
+        }
+    }
+}
+
+// 實作完之後：
+println!("{}", err);       // 直接可用
+let msg = err.to_string();  // 也直接可用</code></pre>
+
+<div class="callout tip">
+<code>impl Report</code> 是「幫 Report 加方法」；<code>impl fmt::Display for AppError</code> 是「幫 AppError 實作 Display 這個 trait」——多了 <code>for TypeName</code>，因為 trait 是標準函式庫定義好的規格。
+</div>
+
+<h2>呼叫端：一次 match 處理所有失敗原因</h2>
+<pre><code>match load_report(filename) {
+    Ok(report) =&gt; println!("{}", report.summary()),
+    Err(err) =&gt; println!("{}", err),
+}</code></pre>
+
+<p class="source">
+來源：<a href="https://doc.rust-lang.org/book/ch09-00-error-handling.html" target="_blank">The Rust Book — 9. Error Handling</a>、<a href="https://doc.rust-lang.org/std/fmt/trait.Display.html" target="_blank">std::fmt::Display</a>（繁中版：<a href="https://rust-lang.tw/book-tw/ch09-00-error-handling.html" target="_blank">rust-lang.tw</a>）。
+對應課程：<a href="../lessons/0016-error-handling-and-custom-errors.html">Lesson 16 · 錯誤處理與自訂錯誤型別</a>。相關：<a href="enums-and-pattern-matching.html">enum 與 match 參考卡</a>、<a href="option-and-result.html">Option 與 Result 參考卡</a>。
+</p>
+
+</main>
+</body>
+</html>

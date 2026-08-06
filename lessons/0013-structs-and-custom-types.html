@@ -1,0 +1,251 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="UTF-8">
+<title>Lesson 13 · struct 與自訂型別</title>
+<link rel="stylesheet" href="../assets/style.css">
+<script src="../assets/quiz.js"></script>
+</head>
+<body>
+<main>
+
+<div class="kicker">Lesson 0013 · Rust · CLI 工具養成路線</div>
+<h1>struct 與自訂型別</h1>
+<div class="byline">目標：能定義一個 struct 把相關資料包成一個型別，能寫 <code>impl</code> 幫它加方法，並且能把 <code>hello_cli</code> 現在四散的變數收成一個型別。</div>
+
+<p>
+先看你目前的 <code>hello_cli/src/main.rs</code> 大概長什麼樣子（把 Lesson 9、11、12 教過的東西接起來）：
+</p>
+
+<pre><code>use std::env;
+use std::fs;
+
+fn add_title(content: &amp;mut String, filename: &amp;str) {
+    content.insert_str(0, &amp;format!("=== {} ===\n", filename));
+}
+
+fn line_count(text: &amp;str) -&gt; usize {
+    text.lines().count()
+}
+
+fn main() {
+    let args: Vec&lt;String&gt; = env::args().collect();
+
+    let filename = match args.get(1) {
+        Some(name) =&gt; name,
+        None =&gt; {
+            println!("用法：cargo run -- &lt;檔名&gt;");
+            return;
+        }
+    };
+
+    match fs::read_to_string(filename) {
+        Ok(mut content) =&gt; {
+            println!("共 {} 行", line_count(&amp;content));
+            add_title(&amp;mut content, filename);
+            println!("{}", content);
+        }
+        Err(error) =&gt; println!("讀不到檔案 {}：{}", filename, error),
+    }
+}</code></pre>
+
+<p>
+如果你的檔案跟這段不完全一樣，先把它換成這樣，這一課從這裡繼續蓋。
+</p>
+
+<p>
+<code>filename</code>、<code>content</code>、<code>line_count(&amp;content)</code> 這三個東西其實是同一份資料的三個面向 —— 都在講「這個檔案」。但它們是三個獨立的變數，函式簽名也一個個分別傳。資料多起來之後（檔案大小、修改時間、行數上限……），這種傳法會越來越亂。
+</p>
+
+<h2>struct：把相關資料包成一個型別</h2>
+
+<pre><code>struct Report {
+    filename: String,
+    content: String,
+    line_count: usize,
+}</code></pre>
+
+<p>
+<code>struct</code> 定義一個新型別，裡面每一項叫<strong>欄位（field）</strong>，每個欄位都要標型別 —— 跟宣告變數一樣。這個定義本身不產生任何資料，它只是一張「這個型別長什麼樣」的藍圖。
+</p>
+
+<h2>建立一個實例</h2>
+
+<pre><code>let report = Report {
+    filename: filename.to_string(),
+    content: content,
+    line_count: 3,
+};
+
+println!("{}", report.filename);      // 用 . 取欄位
+println!("{}", report.content);
+println!("{}", report.line_count);</code></pre>
+
+<p>
+每個欄位都要給值，順序不限，但名字要對上。用 <code>.</code> 加欄位名稱就能取值，跟你一路用到現在的 <code>args[0]</code>、<code>content.len()</code> 是同一個 <code>.</code> 語法。
+</p>
+
+<div class="callout">
+<strong>欄位為什麼是 <code>String</code> 不是 <code>&amp;str</code>？</strong>Lesson 12 已經回答過這題：<code>&amp;str</code> 欄位要標 lifetime（<code>error[E0106]: missing lifetime specifier</code>），那是另一課的東西。<code>String</code> 讓 <code>Report</code> 自己擁有這份資料，不需要管「借的那份資料會不會先死掉」。這也是為什麼上面 <code>filename.to_string()</code> 要轉一次 —— <code>filename</code> 是 <code>&amp;String</code>，欄位要的是 <code>String</code>。
+</div>
+
+<h2>簡寫：欄位名跟變數名一樣時</h2>
+
+<p>
+上面 <code>content: content</code> 這種「欄位名 = 變數名」的情況很常見，Rust 讓你省掉重複：
+</p>
+
+<pre><code>let content = String::from("...");
+let line_count = 3;
+
+let report = Report {
+    filename: filename.to_string(),
+    content,        // 等於 content: content
+    line_count,     // 等於 line_count: line_count
+};</code></pre>
+
+<p>
+只有名字完全一樣才能省。<code>filename: filename.to_string()</code> 因為右邊多了一個 <code>.to_string()</code>，不是單純的變數名，所以還是要寫全。
+</p>
+
+<h2>impl：幫型別加方法</h2>
+
+<p>
+現在 <code>line_count</code> 是一個獨立函式，呼叫時要記得傳 <code>&amp;content</code>。如果這個計算「屬於」<code>Report</code>，可以把它寫成<strong>方法</strong>：
+</p>
+
+<pre><code>impl Report {
+    fn summary(&amp;self) -&gt; String {
+        format!("{}：共 {} 行", self.filename, self.line_count)
+    }
+}</code></pre>
+
+<pre><code>println!("{}", report.summary());</code></pre>
+
+<p>
+<code>impl Report { ... }</code> 是「以下這些函式屬於 <code>Report</code>」的意思。裡面的函式如果第一個參數是 <code>&amp;self</code>，就叫<strong>方法</strong>，呼叫時用 <code>值.方法()</code>，不用再手動傳那個值 —— <code>self</code> 指的就是 <code>report</code> 自己。
+</p>
+
+<div class="callout">
+<strong><code>impl</code> 跟 <code>struct</code> 是靠名字對上的，不是靠位置。</strong>編譯器看到 <code>impl Report</code>，就去找叫 <code>Report</code> 的那個 <code>struct</code>，兩者對上完全是因為<strong>名字一樣</strong>，跟這段程式碼寫在檔案的哪裡沒有關係。就算你把 <code>impl Report</code> 寫在檔案最上面、<code>struct Report</code> 放在最下面，也編得過。可以把它們想成兩份分開的文件：一份定義「有哪些欄位」，一份定義「有哪些方法」，靠同一個型別名接起來。一個 <code>struct</code> 也可以有好幾個 <code>impl</code> 區塊，不必全部塞在一起。
+</div>
+
+<div class="callout tip">
+<strong><code>&amp;self</code> 就是上一課的 <code>&amp;</code>。</strong>方法只是讀取欄位，寫 <code>&amp;self</code>（借用）；要修改欄位，寫 <code>&amp;mut self</code>（可改借用）；要把整個值吃掉不還，寫 <code>self</code>（移動，很少見）。跟 Lesson 11 的借用規則是同一套規則，只是套在方法上。
+</div>
+
+<h2>把 <code>add_title</code> 也改成方法</h2>
+
+<pre><code>impl Report {
+    fn summary(&amp;self) -&gt; String {
+        format!("{}：共 {} 行", self.filename, self.line_count)
+    }
+
+    fn add_title(&amp;mut self) {
+        let title = format!("=== {} ===\n", self.filename);
+        self.content.insert_str(0, &amp;title);
+    }
+}</code></pre>
+
+<pre><code>report.add_title();
+println!("{}", report.content);</code></pre>
+
+<p>
+原本 <code>add_title(&amp;mut content, filename)</code> 要傳兩個參數，因為 <code>content</code> 和 <code>filename</code> 是分開的。現在它們是同一個 <code>report</code> 的兩個欄位，方法只需要 <code>&amp;mut self</code> 一個參數，裡面用 <code>self.content</code>、<code>self.filename</code> 就能同時碰到兩個欄位。這是 struct 的實際好處：相關資料綁在一起，函式簽名跟著變短。
+</p>
+
+<h2>關聯函式：不帶 <code>self</code> 的那種</h2>
+
+<p>
+你從 Lesson 1 就一直在寫 <code>String::from(...)</code>、<code>Vec::new()</code>。這兩個現在可以講清楚了 —— 它們是<strong>關聯函式（associated function）</strong>：定義在 <code>impl</code> 裡、但第一個參數不是 <code>self</code> 的函式，用<code>型別名::函式名()</code>呼叫，不是<code>值.函式名()</code>。
+</p>
+
+<pre><code>impl Report {
+    fn new(filename: &amp;str, content: String) -&gt; Report {
+        let line_count = content.lines().count();
+        Report {
+            filename: filename.to_string(),
+            content,
+            line_count,
+        }
+    }
+}</code></pre>
+
+<pre><code>let report = Report::new(filename, content);</code></pre>
+
+<p>
+<code>new</code> 不是關鍵字，只是慣例上大家都把「造出一個實例」的關聯函式叫這個名字 —— 就像 <code>String::from</code>、<code>String::new</code>、<code>Vec::new</code> 一樣。方法和關聯函式的差別只有一件事：<strong>有沒有 <code>self</code> 當第一個參數</strong>。有，用 <code>.</code> 呼叫；沒有，用 <code>::</code> 呼叫。
+</p>
+
+<div class="quiz" data-mcq data-answer="2">
+<div class="q">小測驗一：<code>fn summary(&amp;self) -&gt; String</code> 和 <code>fn new(filename: &amp;str) -&gt; Report</code> 這兩個函式定義在同一個 <code>impl Report</code> 裡，關鍵差別是什麼？</div>
+<div class="choices">
+<button>summary 回傳 String，new 回傳 Report，回傳型別不同</button>
+<button>summary 有 &amp;self 是方法用 . 呼叫，new 沒有 self 是關聯函式用 :: 呼叫</button>
+<button>summary 可以修改欄位，new 不能修改欄位</button>
+</div>
+<div class="feedback"
+     data-ok="對。有沒有 self 這個第一個參數，決定了呼叫語法是 report.summary() 還是 Report::new(...)，跟回傳型別或會不會修改欄位沒關係。"
+     data-bad="回想 String::from 和 s.len() 的呼叫語法差在哪裡 —— 一個用 ::，一個用 .。決定這件事的是哪個參數？"></div>
+</div>
+
+<div class="quiz" data-mcq data-answer="3">
+<div class="q">小測驗二：呼叫 <code>report.add_title()</code> 時，<code>fn add_title(&amp;mut self)</code> 裡的 <code>self</code> 綁的是哪個值？</div>
+<div class="choices">
+<button>filename，因為 insert_str 需要知道檔名</button>
+<button>content，用來建立一份新的字串</button>
+<button>什麼都不用傳，self 就是呼叫它的那個 report 本身</button>
+</div>
+<div class="feedback"
+     data-ok="對。report.add_title() 呼叫時，report 自動變成方法裡的 self，不用手動傳。這正是方法比獨立函式少一個參數的原因。"
+     data-bad="再看一次呼叫端：report.add_title()，括號裡是空的。那 self 從哪裡來？"></div>
+</div>
+
+<div class="quiz" data-text data-accept='["impl"]'>
+<div class="q">小測驗三：要幫 <code>Report</code> 加方法或關聯函式，要寫 <code>____ Report { ... }</code> 這個區塊，關鍵字是什麼？（英文，4 個字母）</div>
+<input type="text" id="q3" placeholder="你的答案">
+<button>檢查</button>
+<div class="feedback"
+     data-ok="對，impl。impl 是 implementation 的縮寫 —— 「這個型別的實作內容」。"
+     data-bad="提示：這一課出現很多次的那個關鍵字，寫在 struct 名字前面。"></div>
+</div>
+
+<h2>換你動手</h2>
+
+<p>
+把 <code>hello_cli</code> 從「三個變數 + 兩個獨立函式」改成「一個 <code>Report</code> struct」。
+</p>
+
+<div class="callout">
+<strong>四個步驟：</strong>
+<ul>
+<li>定義 <code>struct Report { filename: String, content: String, line_count: usize }</code>。</li>
+<li>寫 <code>impl Report</code>，裡面放 <code>fn new(filename: &amp;str, content: String) -&gt; Report</code>（在裡面算好 <code>line_count</code>）、<code>fn add_title(&amp;mut self)</code>、<code>fn summary(&amp;self) -&gt; String</code>。</li>
+<li>改 <code>main</code>：<code>Ok(content) =&gt; { ... }</code> 分支裡呼叫 <code>Report::new(filename, content)</code> 造出 <code>report</code>（記得加 <code>mut</code>，<code>add_title</code> 要改欄位），然後依序印 <code>report.summary()</code>、呼叫 <code>report.add_title()</code>、印 <code>report.content</code>。</li>
+<li>刪掉原本獨立的 <code>fn line_count</code> 和 <code>fn add_title</code> —— 它們的邏輯已經搬進 <code>impl</code> 裡了。</li>
+</ul>
+</div>
+
+<p>
+成功條件：<code>cargo run -- notes.txt</code> 印出「檔名：共 N 行」，接著印出加了標題的完整內容，而且沒給參數、給錯檔名這兩條路徑仍然不會 panic。
+</p>
+
+<div class="win">
+<div class="kicker">這一課的成果</div>
+你現在能把散落的變數和函式收成一個有清楚邊界的型別。這是 <code>MISSION.md</code>「設計 struct 和 enum 來塑模 CLI 工具資料」這條目標的第一步 —— 之後你的 CLI 工具會越來越常長成「定義幾個 struct，寫幾個 impl，main 只負責串起來」的形狀。<code>String::from</code>、<code>Vec::new</code> 這些你早就在用的東西，現在也有名字了：關聯函式。速查表：<a href="../reference/structs-and-custom-types.html">struct 與 impl 參考卡</a>。
+</div>
+
+<p class="source">
+主要參考資料：<a href="https://doc.rust-lang.org/book/ch05-01-defining-structs.html" target="_blank">The Rust Programming Language — 5.1 Defining and Instantiating Structs</a> 與 <a href="https://doc.rust-lang.org/book/ch05-03-method-syntax.html" target="_blank">5.3 Method Syntax</a>（繁中版：<a href="https://rust-lang.tw/book-tw/ch05-01-defining-structs.html" target="_blank">rust-lang.tw</a>）。
+</p>
+
+<nav class="lesson-links">
+<a href="0012-string-and-str.html">&larr; 上一課：String 與 &amp;str：兩種字串</a>
+<a href="0014-enums-and-data-modeling.html">下一課：enum 與資料建模 &rarr;</a>
+</nav>
+
+<p class="ask-agent">卡住了、或有任何看不懂的地方，直接問我（你的 AI 教學助手）就好 —— 隨時可以打斷這個流程提問。</p>
+
+</main>
+</body>
+</html>

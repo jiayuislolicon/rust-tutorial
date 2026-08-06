@@ -1,0 +1,158 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="UTF-8">
+<title>Lesson 14 · enum 與資料建模</title>
+<link rel="stylesheet" href="../assets/style.css">
+<script src="../assets/quiz.js"></script>
+</head>
+<body>
+<main>
+
+<div class="kicker">Lesson 0014 · Rust · CLI 工具養成路線</div>
+<h1>enum 與資料建模</h1>
+<div class="byline">目標：能定義一個 enum 表達「只能是這幾種之一」的資料，能用 <code>match</code> 分辨每個變體，並幫 <code>hello_cli</code> 的 <code>Report</code> 加上「把每一行分類」的能力。</div>
+
+<p>
+你其實從第一堂課就在用 enum 了，只是沒看過 <code>enum</code> 這個關鍵字：<code>Option</code> 和 <code>Result</code> 都是 enum。<code>Option</code> 有兩個變體 <code>Some(T)</code>、<code>None</code>；<code>Result</code> 有兩個變體 <code>Ok(T)</code>、<code>Err(E)</code>。這一課要教的，是怎麼自己定義一個這樣的型別。
+</p>
+
+<h2>struct 是「且」，enum 是「或」</h2>
+
+<p>
+Lesson 13 的 <code>struct Report</code> 把 <code>filename</code>、<code>content</code>、<code>line_count</code> 綁在一起 —— 一個 <code>Report</code> 同時擁有這三個欄位，是「且」的關係。enum 相反：一個值只會是列出的變體<strong>之一</strong>，是「或」的關係。
+</p>
+
+<pre><code>enum LineKind {
+    Empty,
+    Comment,
+    Code,
+}</code></pre>
+
+<p>
+一個 <code>LineKind</code> 只會是 <code>Empty</code>、<code>Comment</code>、<code>Code</code> 三者之一，不會同時是兩個。建立一個值要寫 <code>LineKind::Empty</code>（用 <code>::</code>，跟關聯函式一樣的語法，因為變體本質上就是「型別底下的一個東西」）。
+</p>
+
+<h2>用 match 分辨變體</h2>
+
+<p>
+拿到一個 <code>LineKind</code> 之後，用 <code>match</code> 分辨它是哪個變體 —— 跟你在 Lesson 8、9 拆 <code>Option</code>、<code>Result</code> 時做的事完全一樣：
+</p>
+
+<pre><code>fn describe(kind: LineKind) -&gt; &amp;'static str {
+    match kind {
+        LineKind::Empty =&gt; "空行",
+        LineKind::Comment =&gt; "註解",
+        LineKind::Code =&gt; "程式碼",
+    }
+}</code></pre>
+
+<div class="callout tip">
+<strong><code>match</code> 一定要列完所有變體。</strong>少寫一個變體，編譯器直接報錯，不會等到執行期才出包。這跟 <code>match</code> 拆 <code>Option</code> 時你必須寫 <code>None</code> 那個分支，是同一條規則 —— <a href="../GLOSSARY.md#terms">GLOSSARY.md</a> 裡 <code>match</code> 那條寫的「exhaustive」。
+</div>
+
+<h2>變體也能帶資料</h2>
+
+<p>
+目前 <code>LineKind</code> 的三個變體都是空的，只是三個名字。但變體其實可以像 struct 一樣<strong>帶著資料</strong> —— 你早就見過這種用法，只是沒注意：<code>Option</code> 的兩個變體裡，<strong><code>Some</code> 帶著資料，<code>None</code> 不帶</strong>；<code>Result</code> 的兩個變體裡，<strong><code>Ok</code> 和 <code>Err</code> 都帶著資料</strong>（分別是成功的值、失敗的原因）。
+</p>
+
+<pre><code>Some(name)   // Option 的 Some 變體，帶著一個 T
+Ok(content)  // Result 的 Ok 變體，帶著一個 T
+Err(error)   // Result 的 Err 變體，帶著一個 E</code></pre>
+
+<p>
+<code>match</code> 拆變體的同時，也把它帶的資料取出來綁到一個名字上（<code>name</code>、<code>content</code>、<code>error</code>）—— 這就是你在 <code>match fs::read_to_string(filename) { Ok(content) =&gt; ..., Err(error) =&gt; ... }</code> 裡一直在做的事。自己定義的 enum 也能這樣寫：
+</p>
+
+<pre><code>enum LineKind {
+    Empty,
+    Comment,
+    Code(String),   // 帶著這一行程式碼本身
+}
+
+match kind {
+    LineKind::Empty =&gt; println!("空行"),
+    LineKind::Comment =&gt; println!("註解"),
+    LineKind::Code(text) =&gt; println!("程式碼：{}", text),
+}</code></pre>
+
+<div class="quiz" data-mcq data-answer="3">
+<div class="q">小測驗一：<code>struct</code> 和 <code>enum</code> 的關鍵差別是什麼？</div>
+<div class="choices">
+<button>struct 只能有一個欄位，enum 可以有很多變體</button>
+<button>struct 用在 CLI 工具，enum 用在其他地方</button>
+<button>struct 的值同時擁有所有欄位，enum 的值只會是其中一個變體</button>
+</div>
+<div class="feedback"
+     data-ok="對。struct 是「且」（同時擁有全部欄位），enum 是「或」（只會是其中一個變體）。"
+     data-bad="想想 Report 有 filename 又有 content，跟 Option 只會是 Some 或 None 之一，這兩種資料形狀哪裡不一樣。"></div>
+</div>
+
+<div class="quiz" data-mcq data-answer="1">
+<div class="q">小測驗二：<code>enum Signal { Red, Yellow, Green }</code>，寫 <code>match</code> 時只列了 <code>Red</code> 和 <code>Green</code> 兩個分支，會發生什麼事？</div>
+<div class="choices">
+<button>編譯失敗，因為少列了 Yellow 這個變體</button>
+<button>編譯成功，執行到 Yellow 時什麼都不做</button>
+<button>編譯成功，執行到 Yellow 時 panic</button>
+</div>
+<div class="feedback"
+     data-ok="對。match 要求列完所有變體（exhaustive），少一個就是編譯錯誤，不會留到執行期才爆炸。"
+     data-bad="回想 Lesson 8、9 拆 Option 時，你有沒有辦法只寫 Some 不寫 None 卻編譯得過？"></div>
+</div>
+
+<div class="quiz" data-text data-accept='["Some","Ok"]'>
+<div class="q">小測驗三：<code>Option</code> 這個 enum 裡，帶著資料的那個變體叫什麼？（英文，4 個字母，開頭大寫）</div>
+<input type="text" id="q3" placeholder="你的答案">
+<button>檢查</button>
+<div class="feedback"
+     data-ok="對，Some。None 才是那個沒有資料的空變體。"
+     data-bad="提示：match some_option { ____(value) => ..., None => ... }。"></div>
+</div>
+
+<h2>換你動手</h2>
+
+<p>
+幫 <code>hello_cli</code> 的 <code>Report</code> 加一個「把每一行分類」的能力：數出檔案裡有幾行是空行、幾行是註解（用 <code>//</code> 開頭判斷）、幾行是程式碼。這個方法要一次回傳三個數字，用得到 <strong>tuple（元組）</strong>——一個固定大小、可以裝好幾個值的容器，寫成 <code>(a, b, c)</code>，取值用 <code>.0</code>、<code>.1</code>、<code>.2</code>（第幾個位置，從 0 開始）：
+</p>
+
+<pre><code>fn pair() -&gt; (usize, usize) {
+    (1, 2)
+}
+
+let (a, b) = pair();   // 呼叫端可以直接拆開接住
+println!("{} {}", a, b);</code></pre>
+
+<div class="callout">
+<strong>四個步驟：</strong>
+<ul>
+<li>在 <code>main.rs</code> 最上面定義 <code>enum LineKind { Empty, Comment, Code }</code>（先不用帶資料的版本）。</li>
+<li>在 <code>impl Report</code> 裡加一個關聯函式 <code>fn classify_line(line: &amp;str) -&gt; LineKind</code>：用 <code>if</code>/<code>else</code> 判斷 <code>line.trim().is_empty()</code>、<code>line.trim().starts_with("//")</code>，回傳對應的 <code>LineKind</code> 變體。</li>
+<li>在 <code>impl Report</code> 裡加一個方法 <code>fn count_kinds(&amp;self) -&gt; (usize, usize, usize)</code>：用 <code>for line in self.content.lines()</code> 搭配 <code>match Report::classify_line(line) { ... }</code>，把三種變體各自的次數累加起來，最後回傳一個 tuple <code>(empty, comment, code)</code>。</li>
+<li>在 <code>main</code> 裡呼叫 <code>report.count_kinds()</code>，把三個數字印出來。</li>
+</ul>
+</div>
+
+<p>
+成功條件：<code>cargo run -- notes.txt</code> 除了原本的標題和內容，還會印出空行、註解、程式碼各幾行，三個數字加起來要等於總行數。
+</p>
+
+<div class="win">
+<div class="kicker">這一課的成果</div>
+你現在能用 <code>enum</code> 表達「只能是這幾種之一」的資料，並用 <code>match</code> 安全地分辨每一種、不怕漏掉任何一種。這直接對應 <code>MISSION.md</code>「設計 struct 和 enum 來塑模 CLI 工具資料」這條成功標準的後半段 —— <code>Option</code>、<code>Result</code> 從今天起不再是「兩個特別的東西」，而是「跟你自己寫的 <code>LineKind</code> 同一種東西」。速查表：<a href="../reference/enums-and-pattern-matching.html">enum 與 match 參考卡</a>。
+</div>
+
+<p class="source">
+主要參考資料：<a href="https://doc.rust-lang.org/book/ch06-01-defining-an-enum.html" target="_blank">The Rust Programming Language — 6.1 Defining an Enum</a> 與 <a href="https://doc.rust-lang.org/book/ch06-02-match.html" target="_blank">6.2 The match Control Flow Construct</a>（繁中版：<a href="https://rust-lang.tw/book-tw/ch06-01-defining-an-enum.html" target="_blank">rust-lang.tw</a>）。
+</p>
+
+<nav class="lesson-links">
+<a href="0013-structs-and-custom-types.html">&larr; 上一課：struct 與自訂型別</a>
+<a href="0015-review-common-mixups.html">下一課：複習：釐清容易混淆的概念 &rarr;</a>
+</nav>
+
+<p class="ask-agent">卡住了、或有任何看不懂的地方，直接問我（你的 AI 教學助手）就好 —— 隨時可以打斷這個流程提問。</p>
+
+</main>
+</body>
+</html>
