@@ -1,0 +1,52 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="UTF-8">
+<title>Reference · cargo test</title>
+<link rel="stylesheet" href="../assets/style.css">
+</head>
+<body>
+<main>
+<div class="kicker">Reference · 速查表</div>
+<h1>單元測試：#[test] / assert_eq! / cargo test</h1>
+
+<h2>標準寫法</h2>
+<pre><code>// 寫在該檔案（例如 report.rs）最下方
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn some_behavior() {
+        assert_eq!(actual_value, expected_value);
+    }
+}</code></pre>
+
+<h2>四個新東西</h2>
+<table>
+<thead><tr><th>語法</th><th>作用</th></tr></thead>
+<tbody>
+<tr><td><code>#[test]</code></td><td>標記一個函式為測試，cargo test 才會執行它。</td></tr>
+<tr><td><code>#[cfg(test)]</code></td><td>只在 cargo test 時編譯這段程式碼；cargo build / run 不含它。</td></tr>
+<tr><td><code>mod tests { use super::*; }</code></td><td>把測試放進子模組的慣例寫法，use super::* 引入外層所有項目。</td></tr>
+<tr><td><code>assert_eq!(a, b)</code> / <code>assert!(cond)</code></td><td>不符合就 panic，該測試被標記 failed；其他測試照常繼續。</td></tr>
+</tbody>
+</table>
+
+<h2>執行</h2>
+<pre><code>cargo test</code></pre>
+<p>依序執行所有 <code>#[test]</code> 函式，印出每個測試 ok / FAILED，最後總結通過與失敗數量。</p>
+
+<div class="callout tip">
+一個測試 panic 不會讓 <code>cargo test</code> 整體中斷——它會把這個測試標記為 FAILED，繼續跑下一個，最後回報幾個過、幾個沒過。
+</div>
+
+<p class="source">
+來源：<a href="https://doc.rust-lang.org/book/ch11-01-writing-tests.html" target="_blank">The Rust Book — 11.1 How to Write Tests</a>（繁中版：<a href="https://rust-lang.tw/book-tw/ch11-01-writing-tests.html" target="_blank">rust-lang.tw</a>）。
+對應課程：<a href="../lessons/0020-unit-testing.html">Lesson 20 · 用 cargo test 寫單元測試</a>。
+</p>
+
+</main>
+</body>
+</html>

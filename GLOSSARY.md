@@ -157,3 +157,12 @@ Marks an item (struct, function, enum, ...) as visible outside the file/module i
 
 **`use`**:
 Brings a path into the current scope so it can be written short instead of in full, e.g. `use report::Report;` lets you write `Report` instead of `report::Report`. Purely a naming convenience — it doesn't change what's compiled or what's visible, that's [[`mod`]] and [[`pub`]]'s job. `crate::` at the start of a path means "starting from the project root."
+
+**`#[test]`**:
+Marks a function as a test — `cargo test` runs every function tagged with it and reports pass/fail. An ordinary function isn't executed automatically; this attribute is what makes it happen.
+
+**`#[cfg(test)]`**:
+Compiles the item below it only when running `cargo test`. Placed above `mod tests { ... }` so test code never ships inside the binary built by `cargo build`/`cargo run`.
+
+**`assert_eq!` / `assert!`**:
+Test-time checks. `assert_eq!(a, b)` panics if `a != b`, printing both actual values. `assert!(cond)` panics if `cond` is `false`. A panic inside a `#[test]` function doesn't crash `cargo test` as a whole — that one test is marked `FAILED` and the rest still run.

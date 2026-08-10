@@ -68,3 +68,34 @@ pub fn load_report(filename: &str) -> Result<Report, AppError> {
         Ok(Report::new(filename, content))
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn classify_line_empty() {
+        assert!(matches!(Report::classify_line(""), LineKind::Empty));
+    }
+
+    #[test]
+    fn classify_line_comment() {
+        assert!(matches!(Report::classify_line("// hi"), LineKind::Comment));
+    }
+
+    #[test]
+    fn classify_line_code() {
+        assert!(matches!(
+            Report::classify_line("let x = 1;"),
+            LineKind::Code
+        ));
+    }
+
+    #[test]
+    fn count_kinds() {
+        let report = Report::new("test.txt", "code\n\n// comment\n".to_string());
+        let counts = report.count_kinds();
+
+        assert_eq!(counts, (1, 1, 1));
+    }
+}

@@ -1,0 +1,223 @@
+<!doctype html>
+<html lang="zh-Hant">
+  <head>
+    <meta charset="UTF-8" />
+    <title>Lesson 20 · 用 cargo test 寫單元測試</title>
+    <link rel="stylesheet" href="../assets/style.css" />
+    <script src="../assets/quiz.js"></script>
+  </head>
+  <body>
+    <main>
+      <div class="kicker">Lesson 0020 · Rust · CLI 工具養成路線</div>
+      <h1>用 cargo test 寫單元測試</h1>
+      <div class="byline">
+        <strong>學習目標：</strong>學會用 <code>#[test]</code> 與
+        <code>assert_eq!</code> 幫 <code>report.rs</code> 裡的邏輯寫自動化測試，並理解
+        <code>#[cfg(test)]</code> 如何讓測試程式碼不進入正式編譯結果。
+      </div>
+
+      <h2>1. 為什麼要寫測試？</h2>
+
+      <p>
+        到目前為止，你驗證程式是否正確的方法，是手動執行
+        <code>cargo run -- notes.txt</code>、換一個不存在的檔名再跑一次、再換一個空檔案跑第三次，然後用眼睛檢查輸出對不對。這個流程沒有錯，但有兩個問題：<strong>每次改完程式碼都要重複做一次</strong>，而且<strong>只有你自己記得該測哪些情況</strong>。
+      </p>
+
+      <p>
+        測試把這個手動流程變成程式碼本身的一部分。你把「這個函式在這個輸入下應該回傳什麼」寫成一段程式，之後每次執行
+        <code>cargo test</code>，這些檢查都會自動重跑一次。改壞了什麼，測試會直接告訴你，不用再靠肉眼比對終端機輸出。
+      </p>
+
+      <div class="callout tip">
+        💡 <strong>對照 TypeScript：</strong>如果你用過 Jest 或 Vitest，這裡的
+        <code>#[test]</code> 就相當於 <code>test('...', () => { ... })</code>，<code
+          >assert_eq!(a, b)</code
+        >
+        就相當於 <code>expect(a).toBe(b)</code>。核心概念一樣：寫一段「呼叫函式、檢查結果」的程式碼，交給測試工具批次執行。
+      </div>
+
+      <h2>2. <code>#[test]</code> 與 <code>assert_eq!</code></h2>
+
+      <p>
+        一個測試就是一個標了 <code>#[test]</code> 的函式，裡面用
+        <code>assert_eq!</code>（或
+        <code>assert!</code>）檢查某個值是否符合預期：
+      </p>
+
+      <pre><code>#[test]
+fn two_plus_two_is_four() {
+    assert_eq!(2 + 2, 4);
+}</code></pre>
+
+      <ul>
+        <li>
+          <strong><code>#[test]</code></strong
+          >：告訴 <code>cargo test</code>「這個函式是一個測試，請執行它」。一般函式不會被自動執行，加了這個標記才會。
+        </li>
+        <li>
+          <strong><code>assert_eq!(左, 右)</code></strong
+          >：檢查兩個值是否相等。相等就什麼事也不會發生，測試通過；不相等，這個函式會
+          <strong>panic</strong>，測試被標記為失敗，並印出兩邊實際的值方便你比對。
+        </li>
+        <li>
+          <strong><code>assert!(條件)</code></strong
+          >：檢查一個布林值是否為 <code>true</code>。<code>false</code> 一樣會
+          panic 並讓測試失敗。
+        </li>
+      </ul>
+
+      <h2>3. <code>#[cfg(test)] mod tests</code>：測試放哪裡</h2>
+
+      <p>
+        Rust 的慣例是把測試寫在<strong>同一個檔案</strong>裡，放進一個獨立的
+        <code>mod tests</code>，並在上面標
+        <code>#[cfg(test)]</code>：
+      </p>
+
+      <pre><code>// report.rs 的最下方
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn two_plus_two_is_four() {
+        assert_eq!(2 + 2, 4);
+    }
+}</code></pre>
+
+      <ul>
+        <li>
+          <strong><code>#[cfg(test)]</code></strong
+          >：告訴編譯器「只有在執行 <code>cargo test</code> 時才編譯這段程式碼」。執行
+          <code>cargo build</code> 或 <code>cargo run</code> 時，這個
+          <code>mod</code> 完全不存在，正式的執行檔不會多帶任何測試程式碼的重量。
+        </li>
+        <li>
+          <strong><code>use super::*;</code></strong
+          >：<code>tests</code> 是 <code>report</code> 模組<em>裡面</em>的一個子模組，這行把外層（<code>report.rs</code>
+          本身）的所有項目都引入進來，這樣測試才能直接呼叫
+          <code>Report::classify_line</code> 之類的東西，不用寫更長的路徑。
+        </li>
+      </ul>
+
+      <h2>4. 執行 <code>cargo test</code></h2>
+
+      <p>
+        在專案目錄下執行 <code>cargo test</code>，Cargo 會編譯所有標了
+        <code>#[test]</code> 的函式並依序執行，最後印出一份總結：
+      </p>
+
+      <pre><code>running 1 test
+test report::tests::two_plus_two_is_four ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out</code></pre>
+
+      <p>
+        如果某個測試的 <code>assert_eq!</code> 失敗，那一行會顯示
+        <code>FAILED</code>，下方會印出失敗的斷言、左右兩邊實際的值，以及發生在哪一行——跟一般
+        panic 的錯誤訊息長得一樣，只是被 <code>cargo test</code> 攔下來歸類成「這個測試沒過」，而不會讓整個指令直接中斷。
+      </p>
+
+      <hr />
+
+      <div class="quiz" data-mcq data-answer="2">
+        <div class="q">
+          小測驗一：<code>assert_eq!(1 + 1, 3)</code> 這行程式碼在測試裡執行後，會發生什麼事？
+        </div>
+        <div class="choices">
+          <button>編譯階段直接失敗，程式無法編譯成功</button>
+          <button>執行時 panic，該測試被標記為 failed</button>
+          <button>印出警告訊息，但測試仍標記為 passed</button>
+        </div>
+        <div
+          class="feedback"
+          data-ok="正確！assert_eq! 是執行期檢查，不是編譯期檢查。兩邊值不相等時會 panic，cargo test 把這次 panic 接住並標記該測試失敗，其他測試照常繼續跑。"
+          data-bad="不對喔。assert_eq! 在編譯階段看不出兩個值是否相等（那要等程式真的執行到這一行才知道），所以它是執行期才會觸發的檢查。"
+        ></div>
+      </div>
+
+      <div class="quiz" data-mcq data-answer="1">
+        <div class="q">
+          小測驗二：如果拿掉 <code>mod tests</code> 上方的
+          <code>#[cfg(test)]</code>，執行 <code>cargo run</code> 時會有什麼差異？
+        </div>
+        <div class="choices">
+          <button>測試程式碼會被一起編譯進正式的執行檔裡</button>
+          <button>編譯器會自動幫你補上這個標記，行為不變</button>
+          <button>cargo run 會直接執行一次所有測試</button>
+        </div>
+        <div
+          class="feedback"
+          data-ok="正確！#[cfg(test)] 就是用來排除測試程式碼，不讓它進入 cargo build / cargo run 的編譯範圍。拿掉它，測試模組會變成一般程式碼的一部分，被一起編譯進執行檔。"
+          data-bad="不對喔。#[cfg(test)] 不是編譯器自動補的，是你手動加上去、明確告訴編譯器「只在測試時編譯這段」的標記。"
+        ></div>
+      </div>
+
+      <h2>換你動手</h2>
+
+      <div class="callout">
+        <strong>幫 <code>report.rs</code> 補上三個測試：</strong>
+        <ol>
+          <li>
+            在 <code>report.rs</code> 檔案最下方，加上
+            <code>#[cfg(test)] mod tests { use super::*; ... }</code>。
+          </li>
+          <li>
+            測試 <code>Report::classify_line</code>：分別傳入空字串
+            <code>""</code>、註解 <code>"// hi"</code>、一般程式碼
+            <code>"let x = 1;"</code>，用 <code>assert!(matches!(結果, LineKind::Empty))</code>
+            這種寫法確認回傳的變體正確（<code>matches!</code> 是用來判斷一個值是否符合某個
+            enum 變體的巨集，之後會有更完整的說明）。
+          </li>
+          <li>
+            測試 <code>count_kinds</code>：用
+            <code>Report::new("test.txt", "code\n\n// comment\n".to_string())</code>
+            建一個 <code>Report</code>，呼叫 <code>count_kinds()</code>，用
+            <code>assert_eq!(結果, (1, 1, 1))</code> 確認三個計數都正確。
+          </li>
+        </ol>
+      </div>
+
+      <p>
+        <strong>驗證條件：</strong>執行 <code>cargo test</code>，三個測試都顯示
+        <code>ok</code>。接著故意把某個測試的期望值改錯（例如把
+        <code>(1, 1, 1)</code> 改成 <code>(2, 1, 1)</code>），確認
+        <code>cargo test</code> 會顯示 <code>FAILED</code> 並印出實際與期望值的差異——這一步是為了親眼確認測試真的有在檢查東西，不是隨便都顯示
+        <code>ok</code>。改完記得把期望值改回正確答案。
+      </p>
+
+      <div class="win">
+        <div class="kicker">這一課的成果</div>
+        <code>report.rs</code> 裡的核心邏輯（分類每一行、統計空行/註解/程式碼數量）現在有自動化測試守著。以後修改
+        <code>classify_line</code> 或
+        <code>count_kinds</code> 的邏輯，只要跑一次 <code>cargo test</code>，就知道有沒有改壞原本的行為，不用再手動跑三次
+        <code>cargo run</code> 肉眼比對。<br /><br />
+        速查表：<a href="../reference/unit-testing.html">cargo test 參考卡</a>。
+      </div>
+
+      <p class="source">
+        主要參考資料：<a
+          href="https://doc.rust-lang.org/book/ch11-01-writing-tests.html"
+          target="_blank"
+          >The Rust Programming Language — Chapter 11.1: How to Write Tests</a
+        >
+        （繁中版：<a
+          href="https://rust-lang.tw/book-tw/ch11-01-writing-tests.html"
+          target="_blank"
+          >rust-lang.tw</a
+        >）。
+      </p>
+
+      <nav class="lesson-links">
+        <a href="0019-modules.html">&larr; 上一課：mod / pub / use 拆分檔案</a>
+        <a href="#">下一課：待訂 &rarr;</a>
+      </nav>
+
+      <p class="ask-agent">
+        卡住了、或有任何看不懂的地方，直接問我（你的 AI 教學助手）就好 ——
+        隨時可以打斷這個流程提問。
+      </p>
+    </main>
+  </body>
+</html>
