@@ -127,3 +127,33 @@ An [[enum]] you define yourself, with one variant per way your program can fail,
 
 **`enum`**:
 Defines a type by listing the fixed set of shapes a value can take — a **variant**. A value is always exactly one variant, never several at once. Contrast with [[struct]]: struct combines fields together (AND), enum picks one variant among several (OR). A variant can carry its own data, e.g. `Some(T)` in [[Option]] or `Ok(T)`/`Err(E)` in [[Result]] — both are ordinary enums you've used since early lessons, just without seeing the `enum` keyword behind them. [[match]] is how you branch on which variant a value is, pulling out any data the variant carries at the same time.
+
+**`?` operator**:
+Placed after an expression that returns [[Result]] (or `Option`): on `Ok(v)` the expression evaluates to `v` and execution continues; on `Err(e)` the whole function returns `Err(e)` immediately. Only legal inside a function whose own return type is `Result`/`Option`. Replaces the boilerplate `match ... { Err(e) => return Err(e), Ok(v) => v }`. If the error type doesn't match the function's declared error type, `?` converts it automatically via [[From trait]] — without a matching `impl From`, it fails to compile.
+
+**From trait**:
+`impl From<A> for B` teaches type `B` how to be built from a value of type `A`, via a `fn from(a: A) -> B` method. The [[`?` operator]] calls this automatically when the error type it sees doesn't match the function's declared error type — e.g. `impl From<std::io::Error> for AppError` lets `?` turn an `io::Error` into an `AppError` without writing the conversion by hand at every call site.
+
+**`if let`**:
+Shorthand for a [[match]] that only cares about one variant, e.g. `if let Err(error) = run() { ... }`. Unlike `match`, it doesn't require every variant to have a branch — the pattern either matches (run the block) or it doesn't (skip it, do nothing). Use it when every other branch would just be an empty `{}`.
+
+**Standard streams**:
+Two separate output channels a program writes to. `println!` writes to `stdout` (normal output); `eprintln!` writes to `stderr` (error/diagnostic output). A terminal shows both interleaved, so they look identical — the difference shows up when output is redirected, e.g. `program > out.txt` only captures `stdout`; error messages printed with `eprintln!` still show up on screen.
+
+**`eprintln!`**:
+Same as `println!`, but writes to [[Standard streams]] `stderr` instead of `stdout`. Use for error messages, so a script piping the program's normal output (`program > out.txt`) doesn't get error text mixed into the captured data.
+
+**Exit code**:
+The number a process reports to whoever ran it (usually the shell) when it finishes. `0` is the convention for success; any nonzero value means failure. A shell script can check it via `$?`, or directly in `if my_tool file.txt; then ...`. A program that fails but still exits with `0` will make calling scripts believe it succeeded.
+
+**`std::process::exit(code)`**:
+Immediately ends the program and reports `code` as its [[exit code]]. Needed because letting `main()` return normally after printing an error still exits with `0` — `process::exit` is how a program reports failure to whatever called it, not just to a human reading the terminal.
+
+**`mod`**:
+Declares that a file is part of the current [[Crate]] and should be compiled, e.g. `mod report;` in `main.rs` tells the compiler to compile `src/report.rs` as a module named `report`. Without this declaration, an existing `.rs` file is invisible to the compiler — Rust does not scan the `src/` directory automatically.
+
+**`pub`**:
+Marks an item (struct, function, enum, ...) as visible outside the file/module it's defined in. Everything is private by default, the opposite of TypeScript's "everything exported unless private." A struct's fields can stay private even when the struct itself is `pub`, as long as outside code only calls `pub` methods on it rather than reading fields directly.
+
+**`use`**:
+Brings a path into the current scope so it can be written short instead of in full, e.g. `use report::Report;` lets you write `Report` instead of `report::Report`. Purely a naming convenience — it doesn't change what's compiled or what's visible, that's [[`mod`]] and [[`pub`]]'s job. `crate::` at the start of a path means "starting from the project root."

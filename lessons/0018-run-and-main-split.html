@@ -1,0 +1,203 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="UTF-8">
+<title>Lesson 18 · run() / main() 分離、stderr 與離開碼</title>
+<link rel="stylesheet" href="../assets/style.css">
+<script src="../assets/quiz.js"></script>
+</head>
+<body>
+<main>
+
+<div class="kicker">Lesson 0018 · Rust · CLI 工具養成路線</div>
+<h1>run() / main() 分離、stderr 與離開碼</h1>
+<div class="byline">目標：將 <code>main()</code> 裡混雜的「讀檔邏輯」與「錯誤呈現方式」分離，使 <code>load_report(filename)</code> 也能使用 <code>?</code> 運算子。同時，讓程式在發生錯誤時符合命令列工具的慣例：將錯誤訊息輸出至 <code>stderr</code>，並回傳非零的離開碼（exit code）。</div>
+
+<p>
+讓我們先回顧目前的 <code>main()</code> 函式：
+</p>
+
+<pre><code>fn main() {
+    let args: Vec&lt;String&gt; = env::args().collect();
+
+    let filename = match args.get(1) {
+        Some(name) =&gt; name,
+        None =&gt; {
+            println!("用法：cargo run -- &lt;檔名&gt;");
+            return;
+        }
+    };
+
+    match load_report(filename) {
+        Ok(mut report) =&gt; {
+            report.add_title();
+            println!("{}", report.summary());
+            println!("{}", report.content);
+            let (empty, comment, code) = report.count_kinds();
+            println!("空行 {} 行，註解 {} 行，程式碼 {} 行", empty, comment, code);
+        }
+        Err(error) =&gt; println!("{}", error),
+    }
+}</code></pre>
+
+<p>
+在上一課（Lesson 17）中，我們學過這樣的樣板寫法：<code>match load_report(filename) { Ok(...) =&gt; ..., Err(error) =&gt; println!("{}", error) }</code>。也就是說，當結果為 <code>Ok</code> 時繼續執行後續動作，若為 <code>Err</code> 則將錯誤印出。這正是 <code>?</code> 運算子想要簡化的情境。然而，如果我們直接在 <code>main()</code> 裡面寫 <code>load_report(filename)?</code>，編譯卻會失敗。
+</p>
+
+<h2>為什麼不能在 <code>main()</code> 裡直接使用 <code>?</code>？</h2>
+
+<p>
+如同 Lesson 17 所提，<code>?</code> 運算子只能用在回傳型別為 <code>Result</code>（或 <code>Option</code>）的函式中。當 <code>?</code> 遇到 <code>Err(e)</code> 時，它會提早結束並將 <code>Err(e)</code> 作為整個函式的回傳值送出。因此，只有當函式本身就宣告會回傳 <code>Result</code> 時，這個機制才能成立。
+</p>
+
+<p>
+目前我們的 <code>main()</code> 並沒有標註回傳型別，這在 Rust 中代表它回傳的是 <code>()</code>（即不回傳任何有意義的值）。如果在其中使用 <code>load_report(filename)?</code>，一旦發生錯誤，<code>?</code> 會試圖回傳 <code>Err(e)</code>，但這與 <code>main()</code> 預設回傳的 <code>()</code> 發生了衝突，導致編譯器拒絕編譯。
+</p>
+
+<h2>解法：將邏輯移至 <code>run()</code>，讓 <code>main()</code> 專職處理收尾</h2>
+
+<p>
+既然問題在於 <code>main()</code> 的回傳型別，解決方法很簡單：我們另外建立一個會回傳 <code>Result</code> 的函式（通常命名為 <code>run()</code>），並將原本 <code>main()</code> 的核心邏輯搬移過去。這樣一來，<code>main()</code> 就只需要負責一件事——呼叫 <code>run()</code>，並決定當錯誤發生時，該如何將訊息呈現給使用者。
+</p>
+
+<pre><code>fn run() -&gt; Result&lt;(), AppError&gt; {
+    let args: Vec&lt;String&gt; = env::args().collect();
+
+    let filename = match args.get(1) {
+        Some(name) =&gt; name,
+        None =&gt; {
+            println!("用法：cargo run -- &lt;檔名&gt;");
+            return Ok(());
+        }
+    };
+
+    let mut report = load_report(filename)?;
+    report.add_title();
+
+    println!("{}", report.summary());
+    println!("{}", report.content);
+
+    let (empty, comment, code) = report.count_kinds();
+    println!("空行 {} 行，註解 {} 行，程式碼 {} 行", empty, comment, code);
+
+    Ok(())
+}
+
+fn main() {
+    if let Err(error) = run() {
+        eprintln!("{}", error);
+        std::process::exit(1);
+    }
+}</code></pre>
+
+<p>
+現在的 <code>run()</code> 包含了原本 <code>main()</code> 的邏輯，主要有兩個不同之處：首先，它的回傳型別變成了 <code>Result&lt;(), AppError&gt;</code>；其次，因為 <code>run()</code> 確實回傳了 <code>Result</code>，所以我們現在可以合法地使用 <code>load_report(filename)?</code> 了。另外，如果使用者忘記提供檔名，程式印出用法說明後會執行 <code>return Ok(());</code>。這代表提早結束 <code>run()</code> 的執行，但因為這不算是一個系統錯誤，所以我們回傳 <code>Ok(())</code> 表示正常結束。
+</p>
+
+<h2><code>main()</code> 剩下的程式碼在做什麼？</h2>
+
+<p>
+現在的 <code>main()</code> 雖然只剩下短短幾行，但每一行都包含了新的概念。讓我們逐一拆解：
+</p>
+
+<p>
+<code>if let Err(error) = run() { ... }</code> 其實是 <code>match</code> 語法的簡寫。如果寫成完整的 <code>match</code>，會長這樣：
+</p>
+
+<pre><code>match run() {
+    Ok(()) =&gt; {}
+    Err(error) =&gt; {
+        eprintln!("{}", error);
+        std::process::exit(1);
+    }
+}</code></pre>
+
+<p>
+當我們只關心其中一種情況，而其他情況都不需要處理時，使用 <code>match</code> 會顯得多餘。這時就可以使用 <code>if let PATTERN = EXPR { ... }</code> 語法，它允許我們只針對特定的分支進行處理。以這裡為例：如果 <code>run()</code> 回傳 <code>Ok(())</code>，程式會直接略過大括號內的程式碼；只有當回傳 <code>Err(error)</code> 時，才會進入大括號，並將 <code>error</code> 變數綁定出來使用。與 <code>match</code> 必須窮舉所有可能性的規定不同，<code>if let</code> 允許我們忽略不在乎的變體，這正是它作為「簡寫」的優勢，非常適合用於「只在乎單一情況」的場景。
+</p>
+
+<p>
+<code>eprintln!("{}", error)</code> 的用法與 <code>println!</code> 幾乎相同，唯一的差別在於開頭的 <code>e</code>。<code>println!</code> 會將訊息印到 <strong>stdout</strong>（標準輸出），而 <code>eprintln!</code> 則是印到 <strong>stderr</strong>（標準錯誤輸出）。這兩者是獨立的輸出管道，雖然終端機預設會將它們混合顯示，讓你感覺不出差異，但當使用者重新導向輸出時，差別就顯現出來了。例如，執行 <code>cargo run -- notes.txt &gt; out.txt</code> 時，只有 <code>stdout</code> 的內容會被寫入 <code>out.txt</code>，而 <code>stderr</code> 的錯誤訊息仍會顯示在終端機畫面上。這樣就能有效地將正常結果與錯誤訊息分開。
+</p>
+
+<p>
+<code>std::process::exit(1)</code> 會立刻終止整個程式，並將 <code>1</code> 作為<strong>離開碼（exit code）</strong>回報給呼叫此程式的環境（通常是 shell）。在命令列的慣例中，離開碼 <code>0</code> 代表執行成功，而任何非零的值都代表發生了錯誤。雖然一般使用者可能不會注意到離開碼，但對於<strong>將此程式寫入腳本自動化執行的人</strong>來說卻至關重要。Shell 可以透過 <code>$?</code> 取得上一個指令的離開碼，像是 <code>if my_tool file.txt; then ...</code> 這樣的條件判斷，也是依賴離開碼來運作的。如果程式發生錯誤卻依然回傳 <code>0</code>，呼叫它的腳本就會誤以為執行成功而繼續往下跑。
+</p>
+
+<p>
+如果我們不呼叫 <code>std::process::exit(1)</code>，而是讓 <code>main()</code> 自然執行完畢，那麼即使我們剛剛才印出了錯誤訊息，程式的離開碼依然會是預設的 <code>0</code>。這正是我們在這一課必須修正的行為。
+</p>
+
+<div class="callout tip">
+請注意實作的順序：必須先讓 <code>run()</code> 的回傳型別改為 <code>Result</code>，<code>main()</code> 才能使用 <code>if let Err(...)</code> 來接收錯誤。如果 <code>run()</code> 依然回傳 <code>()</code>，那麼 <code>main()</code> 裡面的錯誤處理邏輯就毫無用武之地。因此，我們的步驟是：先解決「哪個函式應該回傳 <code>Result</code>」的問題，接著再來處理「<code>main()</code> 該如何呈現錯誤」。
+</div>
+
+<div class="quiz" data-mcq data-answer="1">
+<div class="q">小測驗一：為什麼要將邏輯移至 <code>run()</code>，而不是直接在 <code>main()</code> 裡使用 <code>?</code>？</div>
+<div class="choices">
+<button>因為 main() 的回傳型別是 ()，? 運算子無法在這裡使用</button>
+<button>因為 main() 裡不能呼叫其他函式</button>
+<button>因為 main() 裡不能宣告變數</button>
+</div>
+<div class="feedback"
+     data-ok="正確。當 ? 遇到錯誤時，會將 Err(e) 作為函式的回傳值送出，因此函式必須宣告回傳 Result 才能運作。"
+     data-bad="main() 當然可以呼叫函式與宣告變數——真正的問題在於它的回傳型別。"></div>
+</div>
+
+<div class="quiz" data-mcq data-answer="1">
+<div class="q">小測驗二：當 <code>run()</code> 執行成功並回傳 <code>Ok(())</code> 時，<code>main()</code> 裡的 <code>if let Err(error) = run() { ... }</code> 大括號內會發生什麼事？</div>
+<div class="choices">
+<button>不會執行，main() 會直接結束</button>
+<button>照樣執行，並印出錯誤訊息</button>
+<button>照樣執行，並立刻跳出程式</button>
+</div>
+<div class="feedback"
+     data-ok="正確。if let 只有在 run() 回傳 Err(...) 時才會進入大括號；若回傳 Ok(()) 則會直接略過。"
+     data-bad="if let 只會針對我們指定的變體（Err）進入大括號，Ok(()) 並不符合條件。"></div>
+</div>
+
+<div class="quiz" data-mcq data-answer="1">
+<div class="q">小測驗三：為什麼讀檔失敗時要呼叫 <code>std::process::exit(1)</code>，而不是印完錯誤訊息就讓程式自然結束？</div>
+<div class="choices">
+<button>為了讓離開碼為非零值，方便外部腳本偵測程式是否失敗</button>
+<button>為了讓錯誤訊息變成紅色，比較顯眼</button>
+<button>為了讓程式重新執行一次，給予重試機會</button>
+</div>
+<div class="feedback"
+     data-ok="正確。如果讓程式自然結束，離開碼預設會是 0（代表成功），這會導致呼叫此程式的外部腳本誤判。"
+     data-bad="離開碼不會影響文字顏色，也不會讓程式重新執行——它純粹是回報給呼叫者的一個數字，0 代表成功，非 0 代表失敗。"></div>
+</div>
+
+<h2>換你動手</h2>
+
+<div class="callout">
+<strong>實作步驟：</strong>
+<ul>
+<li>建立一個新函式 <code>fn run() -&gt; Result&lt;(), AppError&gt; { ... }</code>，並將目前 <code>main()</code> 的內容整段搬移進去。接著，將 <code>match load_report(filename) { Ok(mut report) =&gt; { ... } Err(error) =&gt; println!("{}", error) }</code> 改寫為 <code>let mut report = load_report(filename)?;</code>，並保留後續的程式碼。在函式的最後補上 <code>Ok(())</code>。另外，在使用者未提供檔名的判斷分支中，將原本的 <code>return;</code> 改為 <code>return Ok(());</code>。</li>
+<li>將 <code>main()</code> 的內容替換為這三行程式碼：<code>if let Err(error) = run() { eprintln!("{}", error); std::process::exit(1); }</code>。</li>
+</ul>
+</div>
+
+<p>
+成功條件：執行 <code>cargo build</code> 時沒有編譯錯誤；執行 <code>cargo run -- notes.txt</code> 的輸出結果與改寫前一致。當讀取不存在的檔案時，錯誤訊息能正常印出，且透過 <code>echo $?</code> 檢查離開碼時，結果應為 <code>1</code>（改寫前因為 <code>main()</code> 沒有呼叫 <code>process::exit</code>，所以會是 <code>0</code>）；讀取空檔案時的行為也應相同。
+</p>
+
+<div class="win">
+<div class="kicker">這一課的成果</div>
+現在的 <code>main()</code> 職責非常明確，只負責「呼叫 <code>run()</code> 並決定如何呈現錯誤」，而實際的商業邏輯則全部封裝在回傳 <code>Result</code> 的 <code>run()</code> 函式中，這讓我們可以優雅地使用 <code>?</code> 運算子。當程式發生錯誤時，錯誤訊息會被輸出至 <code>stderr</code>，且離開碼為 <code>1</code>——這完全符合命令列工具的標準行為，確保這支程式能安全地整合至腳本或管線（pipeline）中。速查表：<a href="../reference/run-and-main-split.html">run() / main() 分離參考卡</a>。
+</div>
+
+<p class="source">
+主要參考資料：<a href="https://doc.rust-lang.org/book/ch12-03-improving-error-handling-and-modularity.html" target="_blank">The Rust Programming Language — 12.3 Refactoring to Improve Modularity and Error Handling</a> 與 <a href="https://doc.rust-lang.org/book/ch12-06-writing-to-stderr-instead-of-stdout.html" target="_blank">12.6 Writing Error Messages to Standard Error Instead of Standard Output</a>（繁中版：<a href="https://rust-lang.tw/book-tw/ch12-03-improving-error-handling-and-modularity.html" target="_blank">rust-lang.tw</a>）。
+</p>
+
+<nav class="lesson-links">
+<a href="0017-question-mark-operator.html">&larr; 上一課：? 運算子與 From trait</a>
+<a href="0019-modules.html">下一課：用 mod 拆成多檔案 &rarr;</a>
+</nav>
+
+<p class="ask-agent">卡住了、或有任何看不懂的地方，直接問我（你的 AI 教學助手）就好 —— 隨時可以打斷這個流程提問。</p>
+
+</main>
+</body>
+</html>

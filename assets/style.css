@@ -90,6 +90,8 @@ pre code { background: none; padding: 0; }
 }
 
 .callout.tip { border-color: var(--ok); background: #f2f6f0; }
+.callout ol, .callout ul { padding-left: 1.2rem; margin-bottom: 0; }
+.callout pre { margin: 0.5rem 0; }
 
 .source {
   font-size: 0.9rem;
@@ -124,6 +126,49 @@ nav.lesson-links a:hover { text-decoration: underline; }
   font-size: 0.9rem;
   color: var(--muted);
   font-style: italic;
+}
+
+hr {
+  border: 0;
+  border-top: 1px solid var(--rule);
+  margin: 2rem 0;
+}
+
+table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 1.5rem 0;
+  font-size: 0.92rem;
+}
+th, td {
+  padding: 0.5rem 0.7rem;
+  border: 1px solid var(--rule);
+  text-align: left;
+  vertical-align: top;
+}
+thead tr { background: var(--code-bg); }
+
+/* --- Before/after comparison boxes --- */
+.compare {
+  border: 1px solid var(--rule);
+  border-radius: 6px;
+  padding: 1.25rem;
+  margin-bottom: 1.5rem;
+}
+.compare h3 {
+  margin-top: 0;
+  padding-bottom: 0.5rem;
+  border-bottom: 1px solid var(--rule);
+}
+.compare p:first-of-type { margin-top: 0.5rem; }
+.compare pre { margin-bottom: 0; }
+.compare-before { border-left: 3px solid var(--bad); background: #faf3ef; }
+.compare-before h3 { color: var(--bad); }
+.compare-after { border-left: 3px solid var(--ok); background: #f2f6f0; }
+.compare-after h3 { color: var(--ok); }
+
+.compare pre, .callout pre {
+  border: none;
 }
 
 /* --- Quiz widget --- */

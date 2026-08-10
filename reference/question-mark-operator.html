@@ -1,0 +1,73 @@
+<!doctype html>
+<html lang="zh-Hant">
+  <head>
+    <meta charset="UTF-8" />
+    <title>Reference · ? 運算子與 From trait</title>
+    <link rel="stylesheet" href="../assets/style.css" />
+  </head>
+  <body>
+    <main>
+      <div class="kicker">Reference · 速查表</div>
+      <h1>? 運算子與 From trait</h1>
+
+      <h2>? 運算子：失敗提早回傳，成功繼續</h2>
+      <pre><code>fn load_report(filename: &amp;str) -&gt; Result&lt;Report, AppError&gt; {
+    let content = fs::read_to_string(filename)?;   // Err 就提早 return Err(...)
+    if content.trim().is_empty() {
+        Err(AppError::Empty)
+    } else {
+        Ok(Report::new(filename, content))
+    }
+}</code></pre>
+      <p>
+        <code>expr?</code>：<code>Ok(v)</code> 就變成
+        <code>v</code>，程式繼續；<code>Err(e)</code> 就讓整個函式立刻回傳
+        <code>Err(e)</code>。只能用在回傳 <code>Result</code>（或
+        <code>Option</code>）的函式裡。
+      </p>
+
+      <h2>型別不一樣時：impl From 教它怎麼轉</h2>
+      <pre><code>impl From&lt;std::io::Error&gt; for AppError {
+    fn from(e: std::io::Error) -> AppError {
+        AppError::ReadFailed(e)
+    }
+}</code></pre>
+      <p>
+        <code>?</code> 遇到 <code>Err(e)</code> 時會自動呼叫
+        <code>AppError::from(e)</code> 做轉換，再回傳。<code>e</code>
+        的型別跟函式的錯誤型別一樣時，這一步等於沒做事；不一樣時，沒有對應的
+        <code>impl From</code> 會編譯失敗：<code
+          >the trait `From&lt;std::io::Error&gt;` is not implemented for
+          `AppError`</code
+        >。
+      </p>
+
+      <div class="callout tip">
+        不是所有 <code>Err(...)</code> 都需要 <code>From</code>——只有「用
+        <code>?</code> 轉發別的函式的錯誤」才需要。自己判斷邏輯後直接寫的
+        <code>Err(AppError::Empty)</code
+        >，本來就已經是目標型別，不用轉換，也不用 <code>?</code>。
+      </div>
+
+      <p class="source">
+        來源：<a
+          href="https://doc.rust-lang.org/book/ch09-02-recoverable-errors-with-result.html#a-shortcut-for-propagating-errors-the--operator"
+          target="_blank"
+          >The Rust Book — 9.2 The ? Operator</a
+        >、<a
+          href="https://doc.rust-lang.org/std/convert/trait.From.html"
+          target="_blank"
+          >std::convert::From</a
+        >（繁中版：<a
+          href="https://rust-lang.tw/book-tw/ch09-02-recoverable-errors-with-result.html"
+          target="_blank"
+          >rust-lang.tw</a
+        >）。 對應課程：<a href="../lessons/0017-question-mark-operator.html"
+          >Lesson 17 · ? 運算子與 From trait</a
+        >。相關：<a href="error-handling-and-custom-errors.html"
+          >錯誤處理與自訂錯誤型別參考卡</a
+        >。
+      </p>
+    </main>
+  </body>
+</html>

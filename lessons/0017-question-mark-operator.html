@@ -1,0 +1,314 @@
+<!doctype html>
+<html lang="zh-Hant">
+  <head>
+    <meta charset="UTF-8" />
+    <title>Lesson 17 · ? 運算子與 From trait</title>
+    <link rel="stylesheet" href="../assets/style.css" />
+    <script src="../assets/quiz.js"></script>
+  </head>
+  <body>
+    <main>
+      <div class="kicker">Lesson 0017 · Rust · CLI 工具養成路線</div>
+      <h1>? 運算子與 From trait</h1>
+      <div class="byline">
+        <strong>學習目標：</strong>把 <code>load_report</code> 裡冗長的錯誤轉發
+        <code>match</code> 換成 <code>?</code> 運算子，並理解
+        <code>?</code> 如何透過 <code>From</code> trait 自動將
+        <code>io::Error</code> 轉為 <code>AppError</code>。
+      </div>
+      <h2>重構前 vs 重構後</h2>
+      <p>
+        我們先來看看這堂課最終要達成的效果。手寫
+        <code>match</code> 轉發錯誤十分冗長，而使用
+        <code>?</code> 能大幅簡化程式碼。
+      </p>
+
+      <div class="compare compare-before">
+        <h3>🔴 重構前：手寫 <code>match</code> 轉發錯誤</h3>
+        <p>
+          拿到 <code>e</code> 之後包一層
+          <code>AppError::ReadFailed</code>
+          原封不動丟出去，沒有任何計算，純粹是樣板程式碼：
+        </p>
+        <pre><code>fn load_report(filename: &str) -> Result&lt;Report, AppError&gt; {
+    match fs::read_to_string(filename) {
+        Err(e) => Err(AppError::ReadFailed(e)),
+        Ok(content) => {
+            if content.trim().is_empty() {
+                Err(AppError::Empty)
+            } else {
+                Ok(Report::new(filename, content))
+            }
+        },
+    }
+}</code></pre>
+      </div>
+
+      <div class="compare compare-after">
+        <h3>🟢 重構後：使用 <code>?</code> 運算子簡化</h3>
+        <p>
+          一行程式碼同時完成「檢查失敗並提早
+          <code>return</code>」與「錯誤型別自動轉換」：
+        </p>
+        <pre><code>fn load_report(filename: &str) -> Result&lt;Report, AppError&gt; {
+    // ? 一行搞定提早回傳與型別轉換！
+    let content = fs::read_to_string(filename)?;
+
+    if content.trim().is_empty() {
+        Err(AppError::Empty)
+    } else {
+        Ok(Report::new(filename, content))
+    }
+}</code></pre>
+      </div>
+
+      <h2>1. <code>?</code> 運算子的行為機制</h2>
+
+      <p>
+        <code>?</code> 只能接在回傳 <code>Result</code> 的運算式後面（例如
+        <code>fs::read_to_string(filename)?</code>）。它的運作邏輯如下：
+      </p>
+
+      <ul>
+        <li>
+          <strong>如果是 <code>Ok(v)</code></strong
+          >：拆包拿出裡面的值 <code>v</code>，交給後面的程式碼繼續執行。
+        </li>
+        <li>
+          <strong>如果是 <code>Err(e)</code></strong
+          >：讓整支函式<strong>立刻提早結束（<code>return</code>）</strong>，將錯誤傳出。後面的程式碼完全不會執行。
+        </li>
+      </ul>
+
+      <div class="callout tip">
+        💡 <strong>快速理解：</strong>把
+        <code>?</code>
+        想成「提早離場的檢查哨」——東西沒問題就放行通過；東西有問題，整個人直接被請出函式。
+      </div>
+
+      <h3>執行範例模擬</h3>
+      <ul>
+        <li>
+          <strong>檔案存在（如 <code>"notes.txt"</code>）</strong>：<code
+            >read_to_string</code
+          >
+          回傳 <code>Ok("內容")</code> &rarr; <code>?</code> 抽出字串給
+          <code>content</code> &rarr; 繼續執行 <code>if</code> 判斷。
+        </li>
+        <li>
+          <strong>檔案不存在（如 <code>"missing.txt"</code>）</strong>：<code
+            >read_to_string</code
+          >
+          回傳 <code>Err(io_error)</code> &rarr; <code>?</code> 讓
+          <code>load_report</code> 立刻結束並回傳 <code>Err</code> &rarr; 後續的
+          <code>if</code> 完全不執行。
+        </li>
+      </ul>
+
+      <h2>2. 關鍵問題：型別不匹配</h2>
+
+      <p>
+        若直接套用 <code>?</code>，編譯會失敗！原因在於兩邊的錯誤型別不一致：
+      </p>
+
+      <ol>
+        <li>
+          <code>fs::read_to_string</code>
+          回傳的錯誤是：<code>std::io::Error</code>（標準函式庫定義）
+        </li>
+        <li>
+          <code>load_report</code>
+          宣告回傳的錯誤是：<code>AppError</code>（我們自訂的）
+        </li>
+      </ol>
+
+      <p>
+        當 <code>?</code> 準備將 <code>io::Error</code> 回傳時，發現與函式宣告的
+        <code>AppError</code> 型別不合，編譯器就會報錯：<code
+          >? couldn't convert the error to AppError</code
+        >。
+      </p>
+
+      <h2>3. 解法：用 <code>From</code> trait 教 <code>?</code> 如何轉型</h2>
+
+      <p>
+        標準函式庫中的 <code>From</code> trait
+        專門用來處理型別轉換。你可以把它想像成一個<strong>型別轉接頭</strong>（例如「歐規插頭
+        &rarr; 台規插座」）。
+      </p>
+
+      <p>
+        只要我們幫 <code>AppError</code> 實作
+        <code>From&lt;std::io::Error&gt;</code>，就能教 Rust 如何自動轉換型別：
+      </p>
+
+      <pre><code>impl From&lt;std::io::Error&gt; for AppError {
+    fn from(e: std::io::Error) -> AppError {
+        AppError::ReadFailed(e)
+    }
+}</code></pre>
+
+      <h3>這段程式碼做了什麼？</h3>
+      <ul>
+        <li>
+          <code>impl From&lt;std::io::Error&gt; for AppError</code>：宣告
+          <code>AppError</code> 具備將 <code>io::Error</code> 轉為自身的能力。
+        </li>
+        <li>
+          <code>fn from(e: std::io::Error) -&gt; AppError</code>：當
+          <code>?</code> 遇到 <code>io::Error</code> 時，幕後會<strong
+            >自動呼叫 <code>AppError::from(e)</code></strong
+          >，包裝成 <code>AppError::ReadFailed(e)</code> 再回傳！
+        </li>
+      </ul>
+
+      <h2>4. 錯誤來源的兩大分類</h2>
+
+      <p>重構後的 <code>load_report</code> 包含兩種不同來源的錯誤處理方式：</p>
+
+      <pre><code>fn load_report(filename: &str) -> Result&lt;Report, AppError&gt; {
+    let content = fs::read_to_string(filename)?;   // 1. 轉發錯誤：來自外部函式，用 ? + From
+    
+    if content.trim().is_empty() {
+        Err(AppError::Empty)                        // 2. 自訂錯誤：自己判斷的，直接寫 Err(...)
+    } else {
+        Ok(Report::new(filename, content))
+    }
+}</code></pre>
+
+      <table>
+        <thead>
+          <tr>
+            <th>錯誤類型</th>
+            <th>觸發情境</th>
+            <th>處理方式</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><strong>轉發錯誤</strong></td>
+            <td>呼叫其他會回傳 <code>Result</code> 的函式失敗（如讀檔）</td>
+            <td>使用 <code>?</code> 運算子（搭配 <code>impl From</code>）</td>
+          </tr>
+          <tr>
+            <td><strong>自訂錯誤</strong></td>
+            <td>自己邏輯判斷出的異常（如檔案內容為空）</td>
+            <td>直接手寫 <code>Err(AppError::...)</code></td>
+          </tr>
+        </tbody>
+      </table>
+
+      <hr />
+
+      <div class="quiz" data-mcq data-answer="2">
+        <div class="q">
+          小測驗一：<code>fs::read_to_string(filename)?</code>
+          這一行，如果檔案讀不到，接下來會發生什麼事？
+        </div>
+        <div class="choices">
+          <button>程式 panic，直接中止</button>
+          <button>load_report 提早回傳 Err(...)，下面的程式碼不會執行</button>
+          <button>content 會是一個空字串，程式繼續往下跑</button>
+        </div>
+        <div
+          class="feedback"
+          data-ok="對。? 遇到 Err 就讓整個函式提早回傳，不會往下執行。"
+          data-bad="? 跟 .expect() 不一樣——它不會 panic。想想「提早回傳」這四個字。"
+        ></div>
+      </div>
+
+      <div class="quiz" data-mcq data-answer="3">
+        <div class="q">
+          小測驗二：<code>load_report</code> 回傳
+          <code>Result&lt;Report, AppError&gt;</code>，裡面用
+          <code>fs::read_to_string(...)?</code>（回傳
+          <code>Result&lt;String, io::Error&gt;</code>）。要讓這行
+          <code>?</code> 編譯過，還需要什麼？
+        </div>
+        <div class="choices">
+          <button>把 load_report 的回傳型別改成 io::Error</button>
+          <button>幫 io::Error 實作 Display</button>
+          <button>幫 AppError 實作 From&lt;io::Error&gt;</button>
+        </div>
+        <div
+          class="feedback"
+          data-ok="對。? 會自動呼叫 From::from 把 io::Error 轉成 AppError，沒有這個 impl 就轉不過去。"
+          data-bad="問題出在兩個型別對不上：io::Error 跟 AppError。哪個 trait 專門負責「把一個型別變成另一個」？"
+        ></div>
+      </div>
+
+      <h2>換你動手</h2>
+
+      <div class="callout">
+        <strong>實作兩步驟：</strong>
+        <ol>
+          <li>
+            在 <code>AppError</code> 的定義下面，加上 <code>From</code> 的實作：
+            <pre><code>impl From&lt;std::io::Error&gt; for AppError {
+    fn from(e: std::io::Error) -> AppError {
+        AppError::ReadFailed(e)
+    }
+}</code></pre>
+          </li>
+          <li>
+            把 <code>load_report</code> 改寫成使用 <code>?</code>：
+            <pre><code>let content = fs::read_to_string(filename)?;</code></pre>
+            刪除外層手動的 <code>match</code>，保留底部的
+            <code>if content.trim().is_empty() ...</code> 邏輯。
+          </li>
+        </ol>
+      </div>
+
+      <p>
+        <strong>驗證條件：</strong>執行 <code>cargo build</code> 無錯誤，且
+        <code>cargo run -- notes.txt</code>
+        對於正常檔案、不存在檔案、空檔案的行為與 Lesson 16 完全一致。
+      </p>
+
+      <div class="win">
+        <div class="kicker">這一課的成果</div>
+        <code>load_report</code> 現在用 <code>?</code> 取代手動
+        <code>match</code> 轉發錯誤，配合
+        <code>impl From&lt;io::Error&gt; for AppError</code>
+        讓型別自動轉換。這是 Rust 錯誤處理最常見的寫法——之後每次呼叫回傳
+        <code>Result</code> 的函式，都可以用同一招。速查表：<a
+          href="../reference/question-mark-operator.html"
+          >? 運算子與 From trait 參考卡</a
+        >。
+      </div>
+
+      <p class="source">
+        主要參考資料：<a
+          href="https://doc.rust-lang.org/book/ch09-02-recoverable-errors-with-result.html#a-shortcut-for-propagating-errors-the--operator"
+          target="_blank"
+          >The Rust Programming Language — 9.2 A Shortcut for Propagating
+          Errors: the ? Operator</a
+        >
+        與
+        <a
+          href="https://doc.rust-lang.org/std/convert/trait.From.html"
+          target="_blank"
+          >std::convert::From 官方文件</a
+        >（繁中版：<a
+          href="https://rust-lang.tw/book-tw/ch09-02-recoverable-errors-with-result.html"
+          target="_blank"
+          >rust-lang.tw</a
+        >）。
+      </p>
+
+      <nav class="lesson-links">
+        <a href="0016-error-handling-and-custom-errors.html"
+          >&larr; 上一課：錯誤處理與自訂錯誤型別</a
+        >
+        <a href="0018-run-and-main-split.html"
+          >下一課：run() / main() 分離、stderr 與離開碼 &rarr;</a
+        >
+      </nav>
+
+      <p class="ask-agent">
+        卡住了、或有任何看不懂的地方，直接問我（你的 AI 教學助手）就好 ——
+        隨時可以打斷這個流程提問。
+      </p>
+    </main>
+  </body>
+</html>

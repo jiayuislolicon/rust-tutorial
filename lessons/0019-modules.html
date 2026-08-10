@@ -1,0 +1,319 @@
+<!doctype html>
+<html lang="zh-Hant">
+  <head>
+    <meta charset="UTF-8" />
+    <title>Lesson 19 · 用 mod 拆成多檔案</title>
+    <link rel="stylesheet" href="../assets/style.css" />
+    <script src="../assets/quiz.js"></script>
+  </head>
+  <body>
+    <main>
+      <div class="kicker">Lesson 0019 · Rust · CLI 工具養成路線</div>
+      <h1>用 mod 拆成多檔案</h1>
+      <div class="byline">
+        <strong>學習目標：</strong>將原本全部塞在
+        <code>main.rs</code> 裡的錯誤型別與
+        <code>Report</code> 邏輯，依職責拆分到三個不同的檔案中。同時，學會 Rust
+        模組系統中最關鍵的三個字：<code>mod</code>、<code>pub</code> 與
+        <code>use</code>。
+      </div>
+
+      <div class="compare compare-before">
+        <h3>🔴 重構前：所有程式碼擠在 main.rs</h3>
+        <p>
+          目前 <code>AppError</code>、<code>Report</code>、<code>run</code> 與
+          <code>main</code>
+          全部都寫在同一個檔案裡。隨著檔案越來越長，尋找特定邏輯會變得越來越花時間。下方的程式碼用
+          <code>...</code> 省略了具體實作，僅用來示意目前的檔案結構：
+        </p>
+        <pre><code>// main.rs（121 行，全部東西都在這，示意用，非可執行程式碼）
+enum AppError { ... }
+impl fmt::Display for AppError { ... }
+impl From&lt;std::io::Error&gt; for AppError { ... }
+
+struct Report { ... }
+enum LineKind { ... }
+impl Report { ... }
+
+fn load_report(...) -&gt; Result&lt;Report, AppError&gt; { ... }
+fn run() -&gt; Result&lt;(), AppError&gt; { ... }
+fn main() { ... }</code></pre>
+      </div>
+
+      <div class="compare compare-after">
+        <h3>🟢 重構後：依職責拆分成三個檔案</h3>
+        <p>將錯誤型別、報表邏輯與程式進入點，各自獨立成專屬的檔案：</p>
+        <pre><code>src/
+├── main.rs      // mod 宣告 + run() + main()
+├── errors.rs    // AppError + Display + From
+└── report.rs    // Report + LineKind + load_report</code></pre>
+      </div>
+
+      <h2>1. 為什麼需要拆分檔案？</h2>
+
+      <p>
+        目前的 <code>main.rs</code> 大約只有 120
+        行，閱讀起來還算輕鬆。但隨著專案發展，我們一定會繼續加入新功能。如果未來要多支援一種檔案格式，或是新增不同的錯誤型別，這個檔案只會越滾越大，變得難以維護。
+      </p>
+
+      <p>
+        拆分檔案的好處非常直接：<strong>找東西變快了</strong>。想修改錯誤訊息時，直接打開
+        <code>errors.rs</code>；想調整報表邏輯時，直接打開
+        <code>report.rs</code>。你再也不需要在一個冗長的檔案裡來回滾動捲軸了。
+      </p>
+
+      <div class="callout tip">
+        💡 <strong>對照 TypeScript：</strong>在 TypeScript 專案中，你本來就會將
+        <code>errors.ts</code> 與 <code>report.ts</code> 拆成不同的檔案，透過
+        <code>export</code> 將需要公開的部分匯出，再用
+        <code>import { Report } from './report'</code> 將其引入使用。在 Rust
+        裡，<code>pub</code> 就相當於 <code>export</code>，而
+        <code>use</code> 則相當於
+        <code>import</code
+        >。兩者的核心概念完全相同，只是使用的關鍵字不一樣而已。
+      </div>
+
+      <h2>2. <code>mod</code>：告訴編譯器「這裡有其他的檔案」</h2>
+
+      <p>
+        與某些語言不同，Rust <strong>不會</strong>自動將資料夾裡所有的
+        <code>.rs</code> 檔案都納入編譯。你必須在專案的進入點（也就是
+        <code>main.rs</code>）中明確地宣告它們：
+      </p>
+
+      <pre><code>mod errors;
+mod report;</code></pre>
+
+      <p>
+        這兩行程式碼的意思是：「請去找 <code>src/errors.rs</code> 與
+        <code>src/report.rs</code>
+        這兩個檔案，並將它們當作模組編譯進目前的專案中」。如果漏寫了這兩行，即使檔案確實存在於資料夾中，編譯器也會視若無睹。
+      </p>
+
+      <h2>3. <code>pub</code>：預設所有內容都是私有的 (Private)</h2>
+
+      <p>
+        Rust 的存取規則與 TypeScript 恰好相反：TypeScript 預設<strong
+          >整個檔案的內容都可以被 import</strong
+        >（只要你有 export）；而 Rust
+        預設<strong>整個模組內的內容都是私有的</strong>，除非你明確加上
+        <code>pub</code>（public 的縮寫）。
+      </p>
+
+      <p>
+        沒有加上
+        <code>pub</code>
+        的型別或函式，就只能在它所在的檔案（也就是同一個模組）內部使用。如果
+        <code>main.rs</code> 想要使用 <code>report.rs</code> 裡的
+        <code>Report</code> 結構體，我們就必須在
+        <code>report.rs</code> 中加上適當的
+        <code>pub</code> 關鍵字。以下方程式碼為例（用
+        <code>...</code> 省略了未變動的實作細節，僅標示需要加上
+        <code>pub</code> 的地方）：
+      </p>
+
+      <pre><code>pub struct Report {
+    filename: String,   // 欄位不加 pub 也沒關係，
+    content: String,    // 因為外部只透過下面的 pub 方法存取
+    line_count: usize,
+}
+
+impl Report {
+    pub fn new(filename: &str, content: String) -> Report { ... }
+    pub fn summary(&self) -> String { ... }
+    pub fn add_title(&mut self) { ... }
+    pub fn count_kinds(&self) -> (usize, usize, usize) { ... }
+}
+
+pub fn load_report(filename: &str) -> Result&lt;Report, AppError&gt; { ... }</code></pre>
+
+      <ul>
+        <li>
+          <strong><code>pub struct Report</code></strong
+          >：為了讓
+          <code>main.rs</code> 能夠看見並使用這個型別，結構體本身必須加上
+          <code>pub</code>。
+        </li>
+        <li>
+          <strong>欄位不需要 <code>pub</code></strong
+          >：因為 <code>main.rs</code> 只會透過呼叫
+          <code>report.summary()</code> 等方法來操作資料，並不會直接存取
+          <code>report.filename</code>，所以欄位保持私有即可正常運作。
+        </li>
+        <li>
+          <strong>每個需要被外部呼叫的方法都要加上 <code>pub</code></strong
+          >：只要漏掉一個，當外部嘗試呼叫該方法時，編譯器就會無情地報錯。
+        </li>
+        <li>
+          <strong><code>LineKind</code> 不需要 <code>pub</code></strong
+          >：這個列舉（enum）只在 <code>report.rs</code> 內部的
+          <code>count_kinds</code> 方法中使用，<code>main.rs</code>
+          完全不需要知道它的存在，因此維持私有即可。
+        </li>
+      </ul>
+
+      <h2>4. <code>use</code>：將路徑引入目前的作用域</h2>
+
+      <p>
+        在宣告了 <code>mod report;</code> 之後，<code>Report</code>
+        結構體的完整路徑會變成
+        <code>report::Report</code>（如果從專案根目錄算起，則是
+        <code>crate::report::Report</code
+        >）。每次使用都要寫這麼長的全名實在太囉唆了，這時
+        <code>use</code>
+        就能派上用場。它能幫我們將特定路徑「引入」目前的作用域，讓我們可以直接使用簡短的名稱：
+      </p>
+
+      <pre><code>mod errors;
+mod report;
+
+use errors::AppError;
+use report::{Report, load_report};
+
+fn run() -&gt; Result&lt;(), AppError&gt; {
+    let mut report = load_report(filename)?;   // 不用寫 report::load_report
+    ...
+}</code></pre>
+
+      <h2>
+        5. <code>errors.rs</code> 裡的小細節：實作 Trait 時不需要加
+        <code>pub</code>
+      </h2>
+
+      <p>
+        當我們寫下
+        <code>impl From&lt;std::io::Error&gt; for AppError</code>
+        時，這段實作本身<strong>不需要</strong>額外加上 <code>pub</code>。因為
+        <code>impl</code> 區塊並不是獨立的型別或函式，Rust
+        不會限制它的存取。只要
+        <code>AppError</code> 這個型別本身是公開的（<code>pub</code>），當我們在
+        <code>report.rs</code> 裡使用 <code>?</code> 運算子時，Rust
+        就能自動找到並執行這個型別轉換。
+      </p>
+
+      <hr />
+
+      <div class="quiz" data-mcq data-answer="2">
+        <div class="q">
+          小測驗一：如果在 <code>report.rs</code> 裡有一個沒加
+          <code>pub</code> 的函式，而
+          <code>main.rs</code> 嘗試呼叫它，會發生什麼事？
+        </div>
+        <div class="choices">
+          <button>在執行時期發生 panic</button>
+          <button>編譯失敗，因為該函式預設是私有的</button>
+          <button>正常編譯，但函式的回傳值會變成預設值</button>
+        </div>
+        <div
+          class="feedback"
+          data-ok="正確！Rust 預設所有項目都是私有的。若嘗試跨模組呼叫未加上 pub 的項目，編譯器會直接阻擋，導致編譯失敗。"
+          data-bad="不對喔，這並不是執行時期才會發生的錯誤。因為 Rust 預設項目為私有，編譯器在編譯階段就會嚴格把關並擋下這個操作。"
+        ></div>
+      </div>
+
+      <div class="quiz" data-mcq data-answer="1">
+        <div class="q">
+          小測驗二：如果 <code>main.rs</code> 裡忘記寫
+          <code>mod report;</code> 這一行，但
+          <code>src/report.rs</code> 檔案確實存在於資料夾中。編譯的結果會是？
+        </div>
+        <div class="choices">
+          <button>
+            編譯器會當作 report.rs 不存在，並報錯表示找不到相關型別
+          </button>
+          <button>編譯器會自動掃描 src/ 資料夾，所以依然能正常編譯</button>
+          <button>編譯會成功，但程式在執行時才會報錯</button>
+        </div>
+        <div
+          class="feedback"
+          data-ok="正確！mod 宣告是編譯器得知「有哪些檔案需要被編譯」的唯一途徑。漏寫這行，對編譯器來說就等於檔案不存在。"
+          data-bad="不對喔，Rust 不會自動掃描資料夾。回想一下這一課的重點：mod 宣告正是用來明確告訴編譯器要納入哪些檔案的。"
+        ></div>
+      </div>
+
+      <h2>換你動手</h2>
+
+      <div class="callout">
+        <strong>實作三步驟：</strong>
+        <ol>
+          <li>
+            新增 <code>src/errors.rs</code> 檔案。將 <code>AppError</code>、它的
+            <code>Display</code> 實作，以及
+            <code>From&lt;std::io::Error&gt;</code> 的實作整段搬移過去。記得在
+            <code>enum AppError</code> 前面加上 <code>pub</code>。
+          </li>
+          <li>
+            新增 <code>src/report.rs</code> 檔案。將 <code>Report</code>、<code
+              >LineKind</code
+            >
+            以及 <code>load_report</code> 函式整段搬移過去。 接著，為
+            <code>struct Report</code>、<code>impl Report</code>
+            裡面的每個方法，以及 <code>load_report</code> 都加上
+            <code>pub</code>（<code>LineKind</code> 及其欄位則不需要）。
+            最後，在 <code>report.rs</code> 的開頭加上
+            <code>use crate::errors::AppError;</code>，這樣檔案裡才能順利使用
+            <code>AppError</code>。
+          </li>
+          <li>
+            回到 <code>main.rs</code>，刪除已經搬走的程式碼，只留下
+            <code>run()</code> 和
+            <code>main()</code>。並在檔案的最開頭加上以下宣告與引入：
+            <pre><code>mod errors;
+mod report;
+
+use errors::AppError;
+use report::load_report;</code></pre>
+          </li>
+        </ol>
+      </div>
+
+      <p>
+        <strong>驗證條件：</strong>執行
+        <code>cargo build</code> 時沒有任何編譯錯誤。接著執行
+        <code>cargo run -- notes.txt</code
+        >，測試正常檔案、不存在的檔案以及空檔案，確認程式的行為與 Lesson 18
+        完全一致。
+      </p>
+
+      <div class="win">
+        <div class="kicker">這一課的成果</div>
+        我們成功將原本 120 多行的單一檔案，重構為三個各司其職的模組：<code
+          >errors.rs</code
+        >
+        專管錯誤處理，<code>report.rs</code> 負責資料與邏輯，而
+        <code>main.rs</code> 則單純作為程式的進入點。 <br /><br />
+        本課學到的三個關鍵字：<code>mod</code>（宣告模組）、<code>pub</code>（開放存取權限）、<code>use</code>（引入路徑），是往後你在開發任何
+        Rust 專案時都會用到的核心基礎。速查表：<a
+          href="../reference/modules.html"
+          >mod / pub / use 參考卡</a
+        >。
+      </div>
+
+      <p class="source">
+        主要參考資料：<a
+          href="https://doc.rust-lang.org/book/ch07-00-managing-growing-projects-with-packages-crates-and-modules.html"
+          target="_blank"
+          >The Rust Programming Language — Chapter 7: Managing Growing Projects
+          with Packages, Crates, and Modules</a
+        >
+        （繁中版：<a
+          href="https://rust-lang.tw/book-tw/ch07-00-managing-growing-projects-with-packages-crates-and-modules.html"
+          target="_blank"
+          >rust-lang.tw</a
+        >）。
+      </p>
+
+      <nav class="lesson-links">
+        <a href="0018-run-and-main-split.html"
+          >&larr; 上一課：run() / main() 分離、stderr 與離開碼</a
+        >
+        <a href="#">下一課：待訂 &rarr;</a>
+      </nav>
+
+      <p class="ask-agent">
+        卡住了、或有任何看不懂的地方，直接問我（你的 AI 教學助手）就好 ——
+        隨時可以打斷這個流程提問。
+      </p>
+    </main>
+  </body>
+</html>

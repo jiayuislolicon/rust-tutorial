@@ -10,7 +10,7 @@ User then asked a good generalization check: does every std type get a custom `D
 
 ## Status
 
-User has not yet done the Lesson 16 hands-on exercise (`AppError` enum + `Display` impl + `load_report` + updated `main`) — session paused here for today. `hello_cli/src/main.rs` on disk still reflects the Lesson 14 state (no `AppError` yet).
+Update 2026-08-07: confirmed complete. `hello_cli/src/main.rs` has `AppError` (`ReadFailed`/`Empty`), `impl Display for AppError`, and `load_report` returning `Result<Report, AppError>`. Verified by running `cargo build` (clean) and `cargo run` against a real file, a missing file, and an all-whitespace file — all three produced the expected output. The exercise was done between sessions without a recorded learning record at the time.
 
 ## Next
 

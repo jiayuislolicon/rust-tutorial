@@ -1,0 +1,62 @@
+<!doctype html>
+<html lang="zh-Hant">
+  <head>
+    <meta charset="UTF-8" />
+    <title>Reference · mod / pub / use</title>
+    <link rel="stylesheet" href="../assets/style.css" />
+  </head>
+  <body>
+    <main>
+      <div class="kicker">Reference · 速查表</div>
+      <h1>mod / pub / use</h1>
+
+      <h2>mod：宣告一個檔案是模組</h2>
+      <pre><code>// main.rs
+mod errors;   // 編譯 src/errors.rs
+mod report;   // 編譯 src/report.rs</code></pre>
+      <p>
+        少寫 <code>mod</code>，即使檔案存在，編譯器也當作它不存在。只需要在
+        <em>一個地方</em>宣告一次（通常是 <code>main.rs</code>）。
+      </p>
+
+      <h2>pub：預設全部私有，要開放才加</h2>
+      <pre><code>pub struct Report { ... }     // 型別要跨檔案用，struct 本身要 pub
+pub fn load_report(...) { ... } // 函式要跨檔案呼叫，也要 pub
+enum LineKind { ... }          // 只在同一個檔案內用，維持私有</code></pre>
+      <p>
+        對照 TypeScript：<code>pub</code> 就是 <code>export</code>。沒
+        <code>pub</code> 的項目只能在同一個檔案（模組）內使用。
+      </p>
+
+      <h2>use：把路徑帶進目前的作用域</h2>
+      <pre><code>use errors::AppError;
+use report::{Report, load_report};
+
+// 不用每次都寫 report::load_report(...)
+let report = load_report(filename)?;</code></pre>
+      <p>
+        對照 TypeScript：<code>use</code> 就是 <code>import</code>。從專案根目錄算的完整路徑用
+        <code>crate::</code> 開頭，例如 <code>crate::errors::AppError</code>。
+      </p>
+
+      <div class="callout tip">
+        三者分工：<code>mod</code> 決定「哪些檔案要編譯」，<code>pub</code>
+        決定「誰能被別的檔案看到」，<code>use</code> 決定「用短名字還是長路徑」。三個問題各自獨立，別混著想。
+      </div>
+
+      <p class="source">
+        來源：<a
+          href="https://doc.rust-lang.org/book/ch07-00-managing-growing-projects-with-packages-crates-and-modules.html"
+          target="_blank"
+          >The Rust Book — Chapter 7</a
+        >（繁中版：<a
+          href="https://rust-lang.tw/book-tw/ch07-00-managing-growing-projects-with-packages-crates-and-modules.html"
+          target="_blank"
+          >rust-lang.tw</a
+        >）。 對應課程：<a href="../lessons/0019-modules.html"
+          >Lesson 19 · 用 mod 拆成多檔案</a
+        >。
+      </p>
+    </main>
+  </body>
+</html>

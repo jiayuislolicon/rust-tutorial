@@ -1,0 +1,49 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="UTF-8">
+<title>Reference · run() / main() 分離</title>
+<link rel="stylesheet" href="../assets/style.css">
+</head>
+<body>
+<main>
+<div class="kicker">Reference · 速查表</div>
+<h1>run() / main() 分離、stderr 與離開碼</h1>
+
+<h2>標準寫法</h2>
+<pre><code>fn run() -&gt; Result&lt;(), AppError&gt; {
+    // 原本的邏輯，可以用 ?
+    let mut report = load_report(filename)?;
+    // ...
+    Ok(())
+}
+
+fn main() {
+    if let Err(error) = run() {
+        eprintln!("{}", error);
+        std::process::exit(1);
+    }
+}</code></pre>
+<p>
+<code>main()</code> 沒宣告回傳型別就是回傳 <code>()</code>，<code>?</code> 在裡面用不了。把邏輯搬進另一個回傳 <code>Result</code> 的函式（習慣命名 <code>run()</code>），<code>main()</code> 只負責呼叫它、決定失敗時怎麼呈現。
+</p>
+
+<h2>三個新東西</h2>
+<ul>
+<li><code>if let Err(error) = run() { ... }</code>：<code>match</code> 的簡寫，只處理你在乎的那個變體，其他情況直接略過。</li>
+<li><code>eprintln!(...)</code>：跟 <code>println!</code> 一樣，但印到 <code>stderr</code> 而不是 <code>stdout</code>——輸出被重導向到檔案時，錯誤訊息仍然顯示在終端機上。</li>
+<li><code>std::process::exit(1)</code>：立刻結束程式，回報離開碼給呼叫者。<code>0</code> 是成功的慣例，任何非零值代表失敗，shell 用 <code>$?</code> 讀取。</li>
+</ul>
+
+<div class="callout tip">
+不呼叫 <code>process::exit</code>，離開碼預設是 <code>0</code>——即使剛印完錯誤訊息。這是腳本判斷這支程式是否成功唯一看的東西，不是印出來的文字。
+</div>
+
+<p class="source">
+來源：<a href="https://doc.rust-lang.org/book/ch12-03-improving-error-handling-and-modularity.html" target="_blank">The Rust Book — 12.3</a>、<a href="https://doc.rust-lang.org/book/ch12-06-writing-to-stderr-instead-of-stdout.html" target="_blank">12.6 Writing to stderr</a>（繁中版：<a href="https://rust-lang.tw/book-tw/ch12-03-improving-error-handling-and-modularity.html" target="_blank">rust-lang.tw</a>）。
+對應課程：<a href="../lessons/0018-run-and-main-split.html">Lesson 18 · run() / main() 分離、stderr 與離開碼</a>。相關：<a href="question-mark-operator.html">? 運算子與 From trait 參考卡</a>。
+</p>
+
+</main>
+</body>
+</html>
