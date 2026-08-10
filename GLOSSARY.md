@@ -166,3 +166,12 @@ Compiles the item below it only when running `cargo test`. Placed above `mod tes
 
 **`assert_eq!` / `assert!`**:
 Test-time checks. `assert_eq!(a, b)` panics if `a != b`, printing both actual values. `assert!(cond)` panics if `cond` is `false`. A panic inside a `#[test]` function doesn't crash `cargo test` as a whole — that one test is marked `FAILED` and the rest still run.
+
+**Iterator（疊代器）**:
+A value that produces elements one at a time on demand. `content.lines()` is one. It isn't a collection — nothing is computed or stored up front. Methods like `.filter()` and `.map()` are *lazy*: they only stack a rule on top and return a new iterator. Work happens when a consuming method (`.count()`, `.collect()`) or a `for` loop drains it.
+
+**`.filter()` / `.map()` / `.count()` / `.collect()`**:
+`.filter(|x| ...)` keeps only elements matching a condition (count may shrink). `.map(|x| ...)` replaces each element with another value (count unchanged). `.count()` drains the iterator and returns how many elements passed through. `.collect()` drains it into a collection, and needs the target type annotated (`let v: Vec<i32> = ...`). Same names and semantics as the JS array methods, except JS builds a new array at every step and Rust defers everything to the consuming call. See [[Iterator（疊代器）]].
+
+**Closure（閉包）**:
+An inline anonymous function written `|arg| expression`, e.g. `|n| n * 2`. Equivalent to TypeScript's `(n) => n * 2`. Argument types are usually inferred from context, so they're rarely written out.

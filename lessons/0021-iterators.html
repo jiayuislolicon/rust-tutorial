@@ -1,0 +1,257 @@
+<!doctype html>
+<html lang="zh-Hant">
+  <head>
+    <meta charset="UTF-8" />
+    <title>Lesson 21 · 疊代器：filter / map / count</title>
+    <link rel="stylesheet" href="../assets/style.css" />
+    <script src="../assets/quiz.js"></script>
+  </head>
+  <body>
+    <main>
+      <div class="kicker">Lesson 0021 · Rust · CLI 工具養成路線</div>
+      <h1>疊代器：filter / map / count</h1>
+      <div class="byline">
+        <strong>學習目標：</strong>學會用 <code>.filter()</code>、<code>.map()</code>、<code>.count()</code>
+        取代手寫的 <code>for</code> 迴圈與計數變數，並用上一課寫的測試當安全網，確認重構後行為完全沒變。
+      </div>
+
+      <h2>1. 你已經在用疊代器了</h2>
+
+      <p>
+        <code>report.rs</code> 裡的 <code>self.content.lines()</code>，回傳的就是一個<strong>疊代器</strong>（iterator）。
+      </p>
+
+      <p>
+        疊代器是一個「可以一個一個吐出元素」的東西。它本身不是集合，也不會先把所有元素算好放在記憶體裡。你每跟它要一個，它才算一個。
+      </p>
+
+      <p>
+        你目前的用法是把它交給 <code>for</code> 迴圈，讓迴圈一路跑到底。但疊代器還可以先<strong>接上其他步驟</strong>再收尾，這就是這一課要學的。
+      </p>
+
+      <div class="callout tip">
+        💡 <strong>對照 TypeScript：</strong>這組方法跟 JS 陣列的
+        <code>arr.filter(...)</code>、<code>arr.map(...)</code>、<code>arr.length</code> 幾乎是一對一的。
+        最大的差別是 JS 每一步都產生一個新陣列，Rust 的每一步只是在描述「等一下要做什麼」，還沒真的跑。
+      </div>
+
+      <h2>2. 三個方法</h2>
+
+      <p>先看一個純數字的例子：</p>
+
+      <pre><code>let numbers = vec![1, 2, 3, 4, 5, 6];
+
+let even_count = numbers.iter().filter(|n| *n % 2 == 0).count();
+
+println!("{}", even_count); // 3</code></pre>
+
+      <ul>
+        <li>
+          <strong><code>.iter()</code></strong>：從一個集合（這裡是 <code>Vec</code>）做出疊代器。
+          <code>lines()</code> 已經直接給你疊代器了，所以不需要再呼叫 <code>.iter()</code>。
+        </li>
+        <li>
+          <strong><code>.filter(條件)</code></strong>：只留下讓條件為 <code>true</code> 的元素。
+          括號裡的 <code>|n| ...</code> 是<strong>閉包</strong>（closure），等同 TS 的
+          <code>(n) =&gt; ...</code>。
+        </li>
+        <li>
+          <strong><code>.map(轉換)</code></strong>：把每個元素換成另一個值，數量不變。
+        </li>
+        <li>
+          <strong><code>.count()</code></strong>：把疊代器跑到底，回傳跑過幾個元素。
+        </li>
+      </ul>
+
+      <h2>3. 惰性：接上步驟，跟真的執行，是兩件事</h2>
+
+      <p>
+        <code>.filter()</code> 和 <code>.map()</code> 不會執行任何東西。它們只是回傳一個「包了一層額外規則」的新疊代器。
+      </p>
+
+      <p>
+        真正讓它動起來的是最後那個收尾的方法，例如 <code>.count()</code>、<code>.collect()</code>，或是一個
+        <code>for</code> 迴圈。這種特性叫<strong>惰性</strong>（lazy）。
+      </p>
+
+      <pre><code>let numbers = vec![1, 2, 3];
+
+let step = numbers.iter().map(|n| n * 2); // 這一行不會做任何乘法
+
+let doubled: Vec&lt;i32&gt; = step.collect(); // 到這裡才真的算，得到 [2, 4, 6]</code></pre>
+
+      <ul>
+        <li>
+          <strong><code>.collect()</code></strong>：把疊代器跑到底，把結果收成一個集合。
+          它需要你講清楚要收成什麼型別，所以上面寫了 <code>let doubled: Vec&lt;i32&gt;</code>。
+        </li>
+      </ul>
+
+      <p>
+        惰性的好處是中間步驟不會各自產生一個暫存陣列。<code>filter</code> 再 <code>map</code> 再
+        <code>count</code>，資料只被走過一次。
+      </p>
+
+      <h2>4. 重構 <code>count_kinds</code></h2>
+
+      <p>
+        目前的 <code>count_kinds</code> 使用了三個可變變數搭配一個 <code>for</code> 迴圈來計算行數。
+        同樣的邏輯，我們也可以改用疊代器來實作。這兩種寫法在 Rust 中都很常見，讓我們先來看看它們的差異：
+      </p>
+
+      <div class="compare">
+        <h3>迴圈版本（目前的寫法）</h3>
+        <p>只掃描資料一次，利用 <code>match</code> 將結果分派到三個對應的計數器中。</p>
+        <pre><code>let mut empty_count = 0;
+let mut comment_count = 0;
+let mut code_count = 0;
+
+for line in self.content.lines() {
+    match Report::classify_line(line) {
+        LineKind::Empty =&gt; empty_count += 1,
+        LineKind::Comment =&gt; comment_count += 1,
+        LineKind::Code =&gt; code_count += 1,
+    }
+}
+
+(empty_count, comment_count, code_count)</code></pre>
+      </div>
+
+      <div class="compare">
+        <h3>疊代器版本</h3>
+        <p>分別針對每種行別進行篩選與計算，語意上更具宣告性，且不需要使用可變變數。</p>
+        <pre><code>let empty_count = self
+    .content
+    .lines()
+    .filter(|line| matches!(Report::classify_line(line), LineKind::Empty))
+    .count();
+
+// comment_count 與 code_count 的寫法同理
+
+(empty_count, comment_count, code_count)</code></pre>
+      </div>
+
+      <p>
+        <strong>請注意，這並不代表疊代器版本一定比較好。</strong>實際上，這個重構帶來了兩個明確的代價：
+      </p>
+
+      <ul>
+        <li>
+          <strong>資料必須被掃描三次</strong>：這三段疊代器鏈（chain）是各自獨立執行的，這意味著 <code>classify_line</code> 會被呼叫 3n 次，而非原本的 n 次。（疊代器的惰性只能確保「單一條鏈」內不產生多餘的中間集合，但無法將三條鏈自動合併為一次掃描。）
+        </li>
+        <li>
+          <strong>失去編譯期的窮盡性檢查（Exhaustiveness Check）</strong>：這點比效能損失更為致命。如果未來 <code>LineKind</code> 新增了一個變體（例如 <code>Doc</code>），原本的迴圈版本會因為 <code>match</code> 沒有處理到新變體而直接編譯失敗，強迫你補上對應的邏輯。然而，疊代器版本卻能正常編譯，導致新的行別不會被算進任何一個計數器中，總行數也會因此對不上，且編譯器完全不會發出警告。
+        </li>
+      </ul>
+
+      <p>
+        既然如此，為什麼還要這樣改呢？因為這個練習的主要目的是<strong>讓你在熟悉的程式碼中，練習使用 <code>filter</code> 與 <code>count</code></strong>，而不是為了優化這段程式碼。
+        更重要的是，透過接下來的驗證步驟，你將體會到單元測試的價值：即使你大幅修改了核心邏輯的實作方式，測試也能確保程式的行為沒有被改壞，而不必單靠肉眼檢查。
+      </p>
+
+      <div class="callout tip">
+        💡 <code>match</code> 的窮盡性檢查是 Rust 最具價值的特性之一。在進行任何重構時，如果將「編譯期就能抓到的錯誤」變成了「執行期才會發現的錯誤」，即使程式碼看起來更簡潔，也必須停下來仔細評估是否值得。至於這次的重構划不划算，做完之後你可以自己體會看看。
+      </div>
+
+      <hr />
+
+      <div class="quiz" data-mcq data-answer="3">
+        <div class="q">
+          小測驗一：<code>let x = v.iter().map(|n| n * 2);</code> 這一行執行後，發生了什麼？
+        </div>
+        <div class="choices">
+          <button>每個元素都被乘以二，結果存進新的 Vec</button>
+          <button>每個元素都被乘以二，結果覆蓋原本的 Vec</button>
+          <button>沒有任何乘法被執行，只做出一個新疊代器</button>
+        </div>
+        <div
+          class="feedback"
+          data-ok="正確！map 是惰性的，只是描述「之後每個元素要怎麼轉換」。要等到 collect()、count() 或 for 迴圈來收尾，乘法才會真的跑。"
+          data-bad="不對喔。map 本身不做事，它回傳一個包了轉換規則的新疊代器。真正觸發計算的是收尾的方法，例如 collect() 或 count()。"
+        ></div>
+      </div>
+
+      <div class="quiz" data-mcq data-answer="2">
+        <div class="q">
+          小測驗二：<code>.filter()</code> 跟 <code>.map()</code> 對元素數量的影響是什麼？
+        </div>
+        <div class="choices">
+          <button>filter 不變、map 可能變少</button>
+          <button>filter 可能變少、map 不變</button>
+          <button>兩者都可能讓元素數量變少</button>
+        </div>
+        <div
+          class="feedback"
+          data-ok="正確！filter 是篩選，不符合條件的被丟掉，數量只會變少或不變。map 是逐一替換，一進一出，數量永遠不變。"
+          data-bad="不對喔。filter 負責丟掉不要的元素（數量可能變少），map 負責把每個元素換成別的值（數量不變）。"
+        ></div>
+      </div>
+
+      <h2>換你動手</h2>
+
+      <div class="callout">
+        <strong>用疊代器重寫 <code>count_kinds</code>：</strong>
+        <ol>
+          <li>
+            先執行一次 <code>cargo test</code>，確認四個測試都是 <code>ok</code>。這是你重構前的基準線。
+          </li>
+          <li>
+            把 <code>count_kinds</code> 裡的 <code>for</code> 迴圈與三個 <code>mut</code>
+            變數，換成三段 <code>lines().filter(...).count()</code>。
+          </li>
+          <li>
+            篩選條件用 <code>matches!(Report::classify_line(line), LineKind::Empty)</code>
+            這種寫法（跟你上一課測試裡用的一樣）。
+          </li>
+          <li>
+            再執行一次 <code>cargo test</code>，四個測試應該還是全部 <code>ok</code>。
+          </li>
+        </ol>
+      </div>
+
+      <p>
+        <strong>驗證條件：</strong><code>cargo test</code> 四個測試全過，<code>cargo run -- notes.txt</code>
+        印出的三個數字跟重構前一模一樣。這一課的重點不只是新語法——是<strong>你不用靠肉眼確認重構有沒有改壞東西</strong>，測試會告訴你。
+      </p>
+
+      <div class="callout tip">
+        💡 <strong>如果編譯器抱怨型別：</strong><code>lines()</code> 給的是
+        <code>&amp;str</code>，但 <code>filter</code> 的閉包收到的是<em>參考的參考</em>（<code>&amp;&amp;str</code>）。
+        <code>classify_line(line)</code> 通常會自動處理好；如果不行，試著寫
+        <code>classify_line(*line)</code>。把編譯器訊息貼給我，我可以幫你看。
+      </div>
+
+      <div class="win">
+        <div class="kicker">這一課的成果</div>
+        你第一次做了一個有測試護航的重構：改寫核心邏輯的實作，行為完全不變，而且是由
+        <code>cargo test</code> 幫你證明的，不是靠猜。同時你手上多了
+        <code>filter</code> / <code>map</code> / <code>count</code> / <code>collect</code>
+        這組工具——Rust 處理集合的日常寫法就是這些。<br /><br />
+        速查表：<a href="../reference/iterators.html">疊代器參考卡</a>。
+      </div>
+
+      <p class="source">
+        主要參考資料：<a
+          href="https://doc.rust-lang.org/book/ch13-02-iterators.html"
+          target="_blank"
+          >The Rust Programming Language — Chapter 13.2: Processing a Series of Items with Iterators</a
+        >
+        （繁中版：<a
+          href="https://rust-lang.tw/book-tw/ch13-02-iterators.html"
+          target="_blank"
+          >rust-lang.tw</a
+        >）。
+      </p>
+
+      <nav class="lesson-links">
+        <a href="0020-unit-testing.html">&larr; 上一課：用 cargo test 寫單元測試</a>
+        <a href="#">下一課：待訂 &rarr;</a>
+      </nav>
+
+      <p class="ask-agent">
+        卡住了、或有任何看不懂的地方，直接問我（你的 AI 教學助手）就好 ——
+        隨時可以打斷這個流程提問。
+      </p>
+    </main>
+  </body>
+</html>

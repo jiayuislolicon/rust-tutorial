@@ -1,0 +1,134 @@
+<!doctype html>
+<html lang="zh-Hant">
+  <head>
+    <meta charset="UTF-8" />
+    <title>Reference · 疊代器</title>
+    <link rel="stylesheet" href="../assets/style.css" />
+  </head>
+  <body>
+    <main>
+      <div class="kicker">Reference · 速查表</div>
+      <h1>疊代器：filter / map / count / collect</h1>
+
+      <h2>常用方法</h2>
+      <table>
+        <thead>
+          <tr>
+            <th>方法</th>
+            <th>作用</th>
+            <th>惰性？</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><code>.iter()</code></td>
+            <td>從集合做出疊代器（借用元素，不取走）。</td>
+            <td>—</td>
+          </tr>
+          <tr>
+            <td><code>.filter(|x| ...)</code></td>
+            <td>只留下條件為 true 的元素，數量可能變少。</td>
+            <td>惰性</td>
+          </tr>
+          <tr>
+            <td><code>.map(|x| ...)</code></td>
+            <td>把每個元素換成另一個值，數量不變。</td>
+            <td>惰性</td>
+          </tr>
+          <tr>
+            <td><code>.count()</code></td>
+            <td>跑到底，回傳元素個數。</td>
+            <td>收尾</td>
+          </tr>
+          <tr>
+            <td><code>.collect()</code></td>
+            <td>跑到底，把結果收成集合，需標註目標型別。</td>
+            <td>收尾</td>
+          </tr>
+        </tbody>
+      </table>
+
+      <h2>疊代器從哪裡來：<code>.iter()</code> 還是 <code>lines()</code>？</h2>
+      <p>看你手上是什麼東西：</p>
+      <table>
+        <thead>
+          <tr>
+            <th>手上的東西</th>
+            <th>怎麼取得疊代器</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><code>Vec</code> / 陣列 / slice / <code>HashMap</code></td>
+            <td><code>.iter()</code></td>
+          </tr>
+          <tr>
+            <td><code>String</code> / <code>&amp;str</code></td>
+            <td>
+              看你想怎麼切：<code>.lines()</code>、<code>.chars()</code>、<code>.split_whitespace()</code>、<code>.split(',')</code>、<code
+                >.bytes()</code
+              >
+            </td>
+          </tr>
+          <tr>
+            <td>已經是疊代器（例如 <code>lines()</code> 的回傳值）</td>
+            <td>什麼都不用加，直接接 <code>.filter()</code></td>
+          </tr>
+        </tbody>
+      </table>
+      <p>
+        <code>.iter()</code> 是集合共用的「借用每個元素」入口。字串沒有
+        <code>.iter()</code
+        >，因為「一個字串的元素」有好幾種答案（行？字元？位元組？），必須由你指定
+        —— 那些方法名稱就是你的答案。
+      </p>
+      <pre><code>s.lines().iter()  // 編譯錯誤：no method named `iter` found for struct `std::str::Lines`</code></pre>
+      <p>
+        <code>lines()</code> 回傳的已經是疊代器，再呼叫
+        <code>.iter()</code> 沒有意義。
+      </p>
+
+      <h2>惰性</h2>
+      <pre><code>let step = numbers.iter().map(|n| n * 2); // 什麼都還沒算
+
+let doubled: Vec&lt;i32&gt; = step.collect();   // 到這裡才真的跑</code></pre>
+      <p>
+        <code>filter</code> /
+        <code>map</code>
+        只是疊上規則。要有收尾方法（<code>count</code>、<code>collect</code>）或
+        <code>for</code> 迴圈，才會真的走過資料。中間步驟不會各自產生暫存集合。
+      </p>
+
+      <h2>數出符合條件的元素</h2>
+      <pre><code>let empty_count = self
+    .content
+    .lines()
+    .filter(|line| matches!(Report::classify_line(line), LineKind::Empty))
+    .count();</code></pre>
+      <p>
+        <code>lines()</code> 本身就是疊代器，不需要再 <code>.iter()</code>。
+      </p>
+
+      <div class="callout tip">
+        對照 TypeScript：<code>.filter()</code>／<code>.map()</code> 跟 JS
+        陣列同名方法語意一致，<code>.count()</code> 相當於
+        <code>.length</code>。差別是 JS 每一步都立刻產生新陣列，Rust
+        要到收尾方法才執行。
+      </div>
+
+      <p class="source">
+        來源：<a
+          href="https://doc.rust-lang.org/book/ch13-02-iterators.html"
+          target="_blank"
+          >The Rust Book — 13.2 Processing a Series of Items with Iterators</a
+        >（繁中版：<a
+          href="https://rust-lang.tw/book-tw/ch13-02-iterators.html"
+          target="_blank"
+          >rust-lang.tw</a
+        >）。 對應課程：<a href="../lessons/0021-iterators.html"
+          >Lesson 21 · 疊代器：filter / map / count</a
+        >。
+      </p>
+    </main>
+  </body>
+</html>

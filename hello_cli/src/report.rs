@@ -44,19 +44,25 @@ impl Report {
     }
 
     pub fn count_kinds(&self) -> (usize, usize, usize) {
-        let mut empty_count = 0;
-        let mut comment_count = 0;
-        let mut code_count = 0;
+        let empty_counts = self
+            .content
+            .lines()
+            .filter(|line| matches!(Report::classify_line(line), LineKind::Empty))
+            .count();
 
-        for line in self.content.lines() {
-            match Report::classify_line(line) {
-                LineKind::Empty => empty_count += 1,
-                LineKind::Comment => comment_count += 1,
-                LineKind::Code => code_count += 1,
-            }
-        }
+        let comment_counts = self
+            .content
+            .lines()
+            .filter(|line| matches!(Report::classify_line(line), LineKind::Comment))
+            .count();
 
-        (empty_count, comment_count, code_count)
+        let code_counts = self
+            .content
+            .lines()
+            .filter(|line| matches!(Report::classify_line(line), LineKind::Code))
+            .count();
+
+        (empty_counts, comment_counts, code_counts)
     }
 }
 
