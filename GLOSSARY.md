@@ -175,3 +175,15 @@ A value that produces elements one at a time on demand. `content.lines()` is one
 
 **Closure（閉包）**:
 An inline anonymous function written `|arg| expression`, e.g. `|n| n * 2`. Equivalent to TypeScript's `(n) => n * 2`. Argument types are usually inferred from context, so they're rarely written out.
+
+**Match guard（守衛）**:
+An extra `if` condition attached to a `match` arm: `_ if arg.starts_with('-') => ...`. The arm is taken only when the pattern matches *and* the guard is `true`. The guard can read any variable in scope, not just the value being matched. Arms are tried top to bottom with no precedence rules, so a specific literal arm must be written above a guard arm that would also accept it.
+
+**`.as_str()`**:
+Borrows a `&str` view of a `String` without copying. Needed when matching a `String` against string literals — `match arg { "--help" => ... }` fails with `expected `String`, found `&str`` because the scrutinee and the patterns must be the same type. See [[`String` vs `&str`]].
+
+**`.skip(n)`**:
+Iterator adapter that discards the first `n` elements. Lazy, like `.filter()`. `env::args().skip(1)` is the idiomatic way to drop the program's own path from the argument list — no need to `collect()` into a `Vec` first. See [[Iterator（疊代器）]].
+
+**Flag（選項）**:
+A command-line argument that names itself rather than relying on its position, e.g. `--count-only`. Parsing by content instead of by index is what lets `tool --count-only f.txt` and `tool f.txt --count-only` behave identically. An unrecognised flag should be a returned `Err`, not a printed hint — otherwise the user believes it took effect.

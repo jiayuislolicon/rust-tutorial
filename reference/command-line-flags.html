@@ -1,0 +1,106 @@
+<!doctype html>
+<html lang="zh-Hant">
+  <head>
+    <meta charset="UTF-8" />
+    <title>Reference · 命令列選項</title>
+    <link rel="stylesheet" href="../assets/style.css" />
+  </head>
+  <body>
+    <main>
+      <div class="kicker">Reference · 速查表</div>
+      <h1>命令列選項：解析 flag</h1>
+
+      <h2>骨架</h2>
+      <pre><code>let mut filename: Option&lt;String&gt; = None;
+let mut count_only = false;
+
+for arg in env::args().skip(1) {
+    match arg.as_str() {
+        "--count-only" =&gt; count_only = true,
+        _ if arg.starts_with('-') =&gt; return Err(AppError::UnknownFlag(arg)),
+        _ =&gt; filename = Some(arg),
+    }
+}</code></pre>
+      <p>要加新選項，就在第一個分支下面多寫一行字面值分支。</p>
+
+      <h2>要點</h2>
+      <table>
+        <thead>
+          <tr>
+            <th>寫法</th>
+            <th>為什麼</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><code>env::args().skip(1)</code></td>
+            <td>
+              第 0 個元素是程式自己的路徑。<code>args()</code> 是疊代器，直接
+              <code>.skip(1)</code> 就好，不必先 <code>collect()</code> 成
+              <code>Vec</code> 再用索引。
+            </td>
+          </tr>
+          <tr>
+            <td><code>arg.as_str()</code></td>
+            <td>
+              <code>args()</code> 給的是 <code>String</code>，pattern 裡的字面值是
+              <code>&amp;str</code>。少了它，編譯器會說
+              <code>expected `String`, found `&amp;str`</code>。
+            </td>
+          </tr>
+          <tr>
+            <td><code>_ if 條件 =&gt;</code></td>
+            <td>
+              守衛（match guard）。pattern 成立<em>且</em>條件為
+              <code>true</code> 才走這個分支。守衛裡可以用作用域內任何變數。
+            </td>
+          </tr>
+          <tr>
+            <td><code>Option&lt;String&gt;</code> 存檔名</td>
+            <td>
+              「還沒看到檔名」和「檔名是空字串」是兩件事。迴圈跑完再對這個
+              <code>Option</code> 做 <code>match</code>，<code>None</code> 就印用法。
+            </td>
+          </tr>
+        </tbody>
+      </table>
+
+      <h2>分支順序</h2>
+      <p>
+        <code>match</code> 從上往下取<strong>第一個</strong>成立的分支，沒有優先級規則。
+        具體的字面值分支必須寫在 <code>_ if ...</code> 守衛之前，否則永遠輪不到。
+      </p>
+
+      <h2>打錯選項要當成錯誤</h2>
+      <pre><code>// errors.rs
+UnknownFlag(String),
+
+// Display 的 match 裡
+AppError::UnknownFlag(flag) =&gt; write!(f, "不認識的選項：{}", flag),</code></pre>
+      <p>
+        回傳 <code>Err</code> 之後就交給既有的 <code>main()</code> —— 印到 stderr、離開碼
+        1。新增錯誤變體不需要動 <code>main()</code>。
+      </p>
+
+      <div class="callout tip">
+        選項一多、需要 <code>-c</code> 這種短名稱、或需要自動產生
+        <code>--help</code> 時，實務上會換成
+        <a href="https://docs.rs/clap" target="_blank">clap</a> 這類套件。手寫這一版的意義是先看懂它在做什麼。
+      </div>
+
+      <p class="source">
+        來源：<a
+          href="https://doc.rust-lang.org/book/ch12-01-accepting-command-line-arguments.html"
+          target="_blank"
+          >The Rust Book — 12.1 Accepting Command Line Arguments</a
+        >、<a
+          href="https://doc.rust-lang.org/book/ch19-03-pattern-syntax.html#extra-conditionals-with-match-guards"
+          target="_blank"
+          >19.3 Match Guards</a
+        >。 對應課程：<a href="../lessons/0022-command-line-flags.html"
+          >Lesson 22 · 命令列選項：解析 flag</a
+        >。
+      </p>
+    </main>
+  </body>
+</html>
