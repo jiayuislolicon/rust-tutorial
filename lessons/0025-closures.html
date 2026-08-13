@@ -1,0 +1,500 @@
+<!doctype html>
+<html lang="zh-Hant">
+  <head>
+    <meta charset="UTF-8" />
+    <title>Lesson 25 · 閉包：把「怎麼做」當成值傳出去</title>
+    <link rel="stylesheet" href="../assets/style.css" />
+    <script src="../assets/quiz.js"></script>
+  </head>
+  <body>
+    <main>
+      <div class="kicker">Lesson 0025 · Rust · CLI 工具養成路線</div>
+      <h1>閉包：把「怎麼做」當成值傳出去</h1>
+      <div class="byline">
+        <strong>學習目標：</strong>看懂 <code>|x| ...</code> 這種寫法在做什麼，知道它跟一般函式的唯一關鍵差別，並且能自己寫一個傳給
+        <code>sort_by</code> 的閉包。學完你也會知道 <code>Fn</code> / <code>FnMut</code> /
+        <code>FnOnce</code> 出現在簽名裡時該怎麼讀。
+      </div>
+
+      <h2>1. 你會卡在哪：一般函式是「密室」</h2>
+
+      <p>
+        上一課你把 <code>word_counts</code> 換成了 <code>BTreeMap</code>，輸出變成照字母排序。現在你想改需求：
+        <strong>照出現次數由多到少排，而且只留下出現至少 2 次的字</strong>。
+      </p>
+
+      <p>
+        <code>BTreeMap</code> 幫不上忙，因為它只會照「鍵」（字母）排，而你要照「值」（次數）排。
+      </p>
+
+      <p>
+        所以你回到 <code>Vec</code>，然後發現 <code>sort()</code> 也不夠用 —— 它只有一種排法（從小到大）。你需要一個能讓你
+        <strong>指定怎麼比</strong>的工具。同理，要濾掉次數太少的字，你需要一個能讓你
+        <strong>指定怎麼判斷</strong>的方法。
+      </p>
+
+      <p>
+        你可能會想：「那就寫個函式傳進去吧！」於是你寫出這樣的程式碼：
+      </p>
+
+      <pre><code>fn main() {
+    let min = 2;
+
+    fn keep(n: &amp;i32) -&gt; bool {
+        *n &gt;= min          // ← 想讀外面的 min，但編譯器會報錯！
+    }
+
+    let nums = vec![1, 2, 3];
+    let kept: Vec&lt;&amp;i32&gt; = nums.iter().filter(|n| keep(n)).collect();
+    println!("{:?}", kept);
+}</code></pre>
+
+      <p>編譯器會無情地擋下你：</p>
+
+      <pre><code>error[E0434]: can't capture dynamic environment in a fn item
+ --&gt; src/main.rs:5:15
+  |
+5 |         *n &gt;= min
+  |               ^^^
+  |
+  = help: use the `|| { ... }` closure form instead</code></pre>
+
+      <p>
+        這就是卡點：<strong>在 Rust 裡，一般的 <code>fn</code> 函式就像一間「密室」，它完全看不到外面的區域變數。</strong>不管你把 <code>fn</code>
+        寫在哪裡，哪怕是寫在 <code>main</code> 裡面，它也讀不到旁邊的 <code>min</code>。
+      </p>
+
+      <p>
+        但編譯器很貼心地給了提示：<code>use the `|| { ... }` closure form instead</code>（改用閉包寫法）。這一課，我們就要來拆解這個神奇的工具。
+      </p>
+
+      <h2>2. 你其實已經在用它了</h2>
+
+      <p>回頭看看你自己的 <code>report.rs</code>，裡面有這一行：</p>
+
+      <pre><code>.filter(|line| matches!(Report::classify_line(line), LineKind::Empty))</code></pre>
+
+      <p>
+        裡面的 <code>|line| ...</code> 就是閉包。其實你從 Lesson 20 開始就一直在寫閉包了，只是還沒有人正式向你介紹它。
+      </p>
+
+      <p>把語法拆開來看，它只有三個部分：</p>
+
+      <pre><code>|line|    matches!(...)
+└─┬──┘    └────┬─────┘
+  │            └── 主體：算出來的值就是回傳值
+  └── 參數，夾在兩根直線（Pipe）中間</code></pre>
+
+      <p>
+        你對這個形狀應該不陌生，只是括號長得不太一樣。TypeScript 的箭頭函式（Arrow Function）其實就是同一件事：
+      </p>
+
+      <div class="compare">
+        <h3>TypeScript</h3>
+        <pre><code>const inc = (x: number): number =&gt; { return x + 1; };
+const inc = (x: number) =&gt; x + 1;
+const inc = (x) =&gt; x + 1;</code></pre>
+      </div>
+
+      <div class="compare">
+        <h3>Rust</h3>
+        <pre><code>let inc = |x: i32| -&gt; i32 { x + 1 };
+let inc = |x: i32| x + 1;
+let inc = |x| x + 1;</code></pre>
+      </div>
+
+      <p>
+        參數的型別和回傳型別通常都可以省略。這一點跟一般函式很不一樣 —— <code>fn</code>
+        的每個參數都必須標明型別，沒得商量。閉包可以省，是因為它通常只在附近被用到，編譯器看得到呼叫端，能自己推斷出來。
+      </p>
+
+      <div class="callout tip">
+        💡 <strong>閉包的型別只會被推斷一次。</strong>你寫 <code>let f = |x| x + 1;</code> 之後，第一次拿它來算
+        <code>f(1)</code> 時，<code>x</code> 就被定死成 <code>i32</code> 了。之後如果再傳
+        <code>f(1.5)</code> 就會編譯失敗。它不是泛型，只是省略標註而已。
+      </div>
+
+      <h2>3. 閉包到底是什麼：自帶「百寶袋」的函式</h2>
+
+      <p>一句話總結：<strong>閉包就是一個函式，外加它從周圍「偷偷打包帶走」的變數。</strong></p>
+
+      <p>
+        這個「打包帶走」的動作，在程式語言裡有個專有名詞叫<strong>捕捉環境</strong>（capture the
+        environment）。第 1 節那個錯誤訊息裡的 <code>capture dynamic environment</code> 講的就是這件事。
+      </p>
+
+      <p>如果我們把第 1 節的 <code>fn</code> 換成閉包，同樣的程式就能順利執行：</p>
+
+      <pre><code>fn main() {
+    let min = 2;
+    let nums = vec![1, 2, 3];
+
+    // 這裡的 |n| **n >= min 就是閉包
+    let kept: Vec&lt;&amp;i32&gt; = nums.iter().filter(|n| **n &gt;= min).collect();
+    println!("{:?}", kept);   // [2, 3]
+}</code></pre>
+
+      <p>
+        差別只有一個：<strong>閉包記得 <code>min</code> 的存在。</strong>這是它存在的最大價值。其他你能用一般函式做的事，閉包也都能做。
+      </p>
+
+      <p>
+        這也解釋了為什麼 <code>filter</code>、<code>map</code>、<code>sort_by</code>
+        這些方法，要求的參數都是閉包而不是函式。因為它們要讓你把「判斷條件」當成一個值傳進去，而這個條件通常會需要用到你手邊的變數（例如 <code>min</code>）。
+      </p>
+
+      <h2>4. <code>Fn</code>、<code>FnMut</code>、<code>FnOnce</code> 怎麼讀：閉包對變數的「態度」</h2>
+
+      <p>
+        既然閉包會把外面的變數抓進來，那就衍生出一個新問題：<strong>抓進來之後，它打算對這些變數做什麼？</strong>
+      </p>
+
+      <p>
+        這其實就是 Lesson 10 借用規則的延伸。答案只有三種，Rust 給了它們三個專屬的名字：
+      </p>
+
+      <table>
+        <thead>
+          <tr>
+            <th>名字</th>
+            <th>對變數的態度</th>
+            <th>對應的借用方式</th>
+            <th>可以呼叫幾次</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><code>Fn</code></td>
+            <td><strong>「只看不摸」</strong>（唯讀）</td>
+            <td><code>&amp;T</code></td>
+            <td>無限次</td>
+          </tr>
+          <tr>
+            <td><code>FnMut</code></td>
+            <td><strong>「借來改一下」</strong>（會修改）</td>
+            <td><code>&amp;mut T</code></td>
+            <td>無限次</td>
+          </tr>
+          <tr>
+            <td><code>FnOnce</code></td>
+            <td><strong>「有借無還」</strong>（消耗掉）</td>
+            <td>取得所有權 (Ownership)</td>
+            <td>只能一次</td>
+          </tr>
+        </tbody>
+      </table>
+
+      <p>
+        放心，你不需要手動宣告你的閉包是哪一種。<strong>編譯器非常聰明，它會看你在閉包裡怎麼使用那些變數，自動幫你分類。</strong>這三個名字通常只會在你閱讀官方文件或函式簽名時出現。
+      </p>
+
+      <p>來看看 <code>FnMut</code> 的例子 —— 閉包修改了外面的 <code>total</code>：</p>
+
+      <pre><code>fn main() {
+    let mut total = 0;
+    let mut add = |x: i32| total += x;   // ← 因為改了外面的變數，編譯器判定它是 FnMut
+
+    add(1);
+    add(2);
+    println!("{}", total);   // 3
+}</code></pre>
+
+      <p>
+        注意 <code>let mut add</code>：連閉包這個變數本身都要標示 <code>mut</code>，因為呼叫它會改到它肚子裡存的那個 <code>&amp;mut total</code>。
+      </p>
+
+      <p>至於 <code>FnOnce</code>，顧名思義就是「呼叫一次就沒了」。這種閉包會把捕捉到的值直接交出去：</p>
+
+      <pre><code>fn main() {
+    let owned = String::from("hi");
+    let consume = move || owned;    // ← 把 owned 的所有權交出去了
+
+    println!("{}", consume());
+    println!("{}", consume());      // ← 第二次呼叫會報錯！
+}</code></pre>
+
+      <pre><code>error[E0382]: use of moved value: `consume`
+  |
+4 |     println!("{}", consume());
+  |                    --------- `consume` moved due to this call
+5 |     println!("{}", consume());
+  |                    ^^^^^^^ value used here after move</code></pre>
+
+      <p>
+        編譯器會告訴你：<code>closure cannot be invoked more than once because it moves the variable out of its environment</code>。因為它把 <code>owned</code> 送走了，第二次呼叫時已經沒有東西可以送了，所以只能呼叫一次（Once）。
+      </p>
+
+      <h2>5. <code>move</code>：強迫「連根拔起」帶走</h2>
+
+      <p>
+        上一段的程式碼出現了 <code>move ||</code>。這個關鍵字的作用是：<strong>強迫閉包取得它用到的每個變數的「所有權」，而不是只用借的。</strong>
+      </p>
+
+      <p>
+        預設情況下，閉包很客氣，會盡量用「借」的 —— 能只讀就只讀（<code>&amp;</code>），需要改才借（<code>&amp;mut</code>）。但加了 <code>move</code> 之後，閉包就會變得霸道，直接把變數整個搬進自己肚子裡。
+      </p>
+
+      <p>
+        為什麼會需要這麼霸道？回想一下 Lesson 10：借用是有期限的。如果閉包活得比它借的東西還要久，借用就不成立了。
+      </p>
+      
+      <p>
+        最常見的場景是<strong>把閉包丟到另一條執行緒（Thread）上跑</strong> —— 原本的函式可能早就執行完畢、變數都被清除了，但另一條執行緒上的閉包還在跑。這時候如果只用借的，就會讀到無效的記憶體。所以必須用 <code>move</code> 把變數整個搬進閉包裡帶走。
+      </p>
+
+      <div class="callout">
+        <strong>目前你不需要主動寫 <code>move</code>。</strong>這一課特別提出來，是因為你在看別人的 code
+        時一定會遇到它（尤其是 <code>thread::spawn(move || ...)</code> 和各種非同步 Async 的寫法）。看到它時你只要知道：「喔！這個閉包把東西吃進去了，外面的世界不能再用這個變數了。」
+      </div>
+
+      <h2>6. 簽名裡的閉包長什麼樣：串聯上一課的「大小」概念</h2>
+
+      <p>
+        現在來讀真正會卡住你的東西。當一個函式要收閉包當參數時，它的參數型別會長得有點嚇人：
+      </p>
+
+      <pre><code>fn count_if(text: &amp;str, test: impl Fn(&amp;str) -&gt; bool) -&gt; usize {
+    text.lines().filter(|line| test(line)).count()
+}</code></pre>
+
+      <p>我們把 <code>impl Fn(&amp;str) -&gt; bool</code> 一段一段拆解：</p>
+
+      <ul>
+        <li><strong><code>impl</code></strong>：「隨便什麼型別都行，只要它符合後面的條件」。</li>
+        <li><strong><code>Fn</code></strong>：「這個東西要能被當成函式呼叫，而且對捕捉到的變數『只看不摸』」。</li>
+        <li><strong><code>(&amp;str)</code></strong>：「呼叫它的時候，要傳一個 <code>&amp;str</code> 進去」。</li>
+        <li><strong><code>-&gt; bool</code></strong>：「它執行完會回傳 <code>bool</code>」。</li>
+      </ul>
+
+      <p>
+        整句話翻譯成人話就是：「給我任何一個吃 <code>&amp;str</code>、吐 <code>bool</code>、而且不會亂改東西的可呼叫物。」
+      </p>
+
+      <p>用起來就像這樣：</p>
+
+      <pre><code>let text = "code\n\n// comment\n";
+
+println!("{}", count_if(text, |line| line.trim().is_empty()));   // 1
+println!("{}", count_if(text, |line| line.starts_with("//")));   // 1</code></pre>
+
+      <p>
+        <code>count_if</code> 負責「怎麼跑迴圈」，呼叫端負責「怎麼判斷」。這就是把行為當成值傳出去的實際應用 ——
+        也正好可以拿來簡化你 <code>count_kinds</code> 裡那三段幾乎一樣的程式碼。
+      </p>
+
+      <p>另一種你會看到的寫法是 <code>Box&lt;dyn Fn(&amp;str) -&gt; bool&gt;</code>：</p>
+
+      <table>
+        <thead>
+          <tr>
+            <th>寫法</th>
+            <th>意思</th>
+            <th>什麼時候用</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><code>impl Fn(...)</code></td>
+            <td>某一個特定的閉包型別，編譯期就決定好</td>
+            <td>放在函式參數位置，最常見</td>
+          </tr>
+          <tr>
+            <td><code>Box&lt;dyn Fn(...)&gt;</code></td>
+            <td>放在堆積 (Heap) 上的閉包，執行期才知道是哪一個</td>
+            <td>要存進 struct、或放進 <code>Vec</code> 裡時</td>
+          </tr>
+        </tbody>
+      </table>
+
+      <p>
+        還記得 Lesson 24 提到的「編譯器需要知道你要佔多大位子」嗎？每個閉包在底層都是一個編譯器偷偷生成的、獨一無二的型別，因為它們捕捉的變數數量和大小各不相同，所以<strong>每一個閉包的大小都不一樣</strong>。
+      </p>
+      
+      <p>
+        如果你要把不同大小的閉包放進同一個 <code>Vec</code> 裡，編譯器算不出大小就會罷工。這時候就得用 <code>Box</code> 包一層指標，把它變成固定大小（8 位元組）。至於 <code>dyn</code>（Dynamic Dispatch）的詳細機制，我們會在 Lesson 30 深入探討。
+      </p>
+
+      <div class="quiz" data-mcq data-answer="2">
+        <div class="q">小測驗一：閉包和一般 <code>fn</code> 最關鍵的差別是什麼？</div>
+        <div class="choices">
+          <button>閉包只能寫一行，一般函式可以寫很多行</button>
+          <button>閉包能用到它定義位置周圍的區域變數</button>
+          <button>閉包在編譯期不存在，執行期才會被建立</button>
+        </div>
+        <div
+          class="feedback"
+          data-ok="正確！這就是「捕捉環境」。其他事情一般函式都做得到，只有這一件做不到 —— 所以編譯器才會說 can't capture dynamic environment in a fn item。"
+          data-bad="不對喔。閉包主體可以用大括號寫很多行，而且它是編譯期就生成好的型別。真正的差別是它能讀到定義位置周圍的變數，一般 fn 不行。"
+        ></div>
+      </div>
+
+      <div class="quiz" data-mcq data-answer="1">
+        <div class="q">
+          小測驗二：<code>let mut add = |x: i32| total += x;</code> 這個閉包屬於哪一類？
+        </div>
+        <div class="choices">
+          <button><code>FnMut</code></button>
+          <button><code>Fn</code></button>
+          <button><code>FnOnce</code></button>
+        </div>
+        <div
+          class="feedback"
+          data-ok="正確！它改到了捕捉進來的 total，所以是以 &amp;mut 借用的，也就是 FnMut。可以呼叫很多次，但閉包本身要宣告成 mut。"
+          data-bad="不對喔。它對 total 做了 += ，也就是修改。Fn 是只讀，FnOnce 是把值消耗掉；會改但不消耗，那是 FnMut。"
+        ></div>
+      </div>
+
+      <div class="quiz" data-mcq data-answer="2">
+        <div class="q">
+          小測驗三：<code>pairs</code> 裡每個元素是 <code>(&amp;String, &amp;usize)</code>，執行
+          <code>pairs.sort_by(|a, b| b.1.cmp(a.1))</code> 之後是什麼順序？
+        </div>
+        <div class="choices">
+          <button>照單字的字母順序，由 a 到 z</button>
+          <button>照第二個欄位，由大排到小</button>
+          <button>照第二個欄位，由小排到大</button>
+        </div>
+        <div
+          class="feedback"
+          data-ok="正確！.1 是 tuple 的第二個欄位，也就是次數。關鍵在順序：寫成 b.1.cmp(a.1) 是拿後面的去比前面的，等於把結果反過來，所以是由大到小。想改成由小到大就寫 a.1.cmp(b.1)。"
+          data-bad="再看一次比較的方向。.1 是 tuple 的第二個欄位（次數），所以排的是次數不是字母。而 b.1.cmp(a.1) 把兩邊對調了，這會讓順序反過來 —— 由大排到小。"
+        ></div>
+      </div>
+
+      <h2>7. 練習一：讓編譯器把錯誤講給你聽</h2>
+
+      <p>
+        新開一個檔案（或用你的 <code>types.rs</code> 那種暫存檔），把第 1 節那段會失敗的程式碼完整打一次：
+      </p>
+
+      <pre><code>fn main() {
+    let min = 2;
+
+    fn keep(n: &amp;i32) -&gt; bool {
+        *n &gt;= min
+    }
+
+    let nums = vec![1, 2, 3];
+    let kept: Vec&lt;&amp;i32&gt; = nums.iter().filter(|n| keep(n)).collect();
+    println!("{:?}", kept);
+}</code></pre>
+
+      <p>
+        跑起來，親眼看看編譯器抱怨 <code>can't capture dynamic environment in a fn item</code>。然後照著編譯器的建議改：把
+        <code>keep</code> 整個刪掉，直接在 <code>filter</code> 裡寫閉包。
+      </p>
+
+      <p>
+        <strong>成功條件：</strong>輸出 <code>[2, 3]</code>。
+      </p>
+
+      <div class="callout tip">
+        💡 改完之後試著把 <code>let min = 2;</code> 改成 <code>3</code>，確認輸出跟著變成
+        <code>[3]</code>。這是在驗證「閉包真的讀到了外面的變數」，不是碰巧算對。
+      </div>
+
+      <h2>8. 練習二：把 <code>--words</code> 改成按次數排序</h2>
+
+      <p>回到 <code>hello_cli</code>。打開 <code>src/main.rs</code>，找到 <code>--words</code> 那一段：</p>
+
+      <pre><code>if words_count_only {
+    let counts = report.word_counts();
+    for (word, count) in counts {
+        println!("{} {}", word, count);
+    }
+
+    return Ok(());
+}</code></pre>
+
+      <p>改成這樣：</p>
+
+      <pre><code>if words_count_only {
+    let counts = report.word_counts();
+
+    let min = 2;
+    let mut pairs: Vec&lt;(&amp;String, &amp;usize)&gt; = counts.iter().collect();
+    pairs.retain(|pair| *pair.1 &gt;= min);
+    pairs.sort_by(|a, b| b.1.cmp(a.1));
+
+    for (word, count) in pairs {
+        println!("{} {}", word, count);
+    }
+
+    return Ok(());
+}</code></pre>
+
+      <p>這裡出現了三個新東西，每一個都跟閉包有關：</p>
+
+      <ul>
+        <li>
+          <strong><code>retain</code></strong>：就地刪掉不符合條件的元素。它的閉包<strong>捕捉了外面的
+          <code>min</code></strong> —— 這就是第 1 節那個一般函式辦不到的事，現在成功在你的程式裡運作了。
+        </li>
+        <li>
+          <strong><code>sort_by</code></strong>：你告訴它怎麼比大小。<code>pair.1</code> 是次數，寫成
+          <code>b.1.cmp(a.1)</code> 就是拿後面的比前面的，也就是由大排到小。
+        </li>
+        <li>
+          <strong><code>*pair.1</code></strong>：<code>pair.1</code> 的型別是
+          <code>&amp;usize</code>，要跟數字 <code>2</code> 比大小得先用 <code>*</code> 解開（Dereference）。如果你忘了寫，編譯器會說
+          <code>expected `&amp;usize`, found integer</code>，並且直接把 <code>*</code>
+          該補在哪裡畫給你看（<code>help: consider dereferencing the borrow</code>）。
+        </li>
+      </ul>
+
+      <p><strong>成功條件：</strong></p>
+
+      <table>
+        <thead>
+          <tr>
+            <th>指令</th>
+            <th>應該看到</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><code>cargo run -- --words words.txt</code></td>
+            <td><code>apple 3</code> 然後 <code>banana 2</code>（<code>cherry</code> 只出現 1 次，被濾掉了）</td>
+          </tr>
+          <tr>
+            <td><code>cargo test</code></td>
+            <td>5 個測試全過，而且你一個字都不用改</td>
+          </tr>
+        </tbody>
+      </table>
+
+      <div class="callout">
+        <strong>順帶回答上一課留的伏筆。</strong>Lesson 24 讓你刪掉 <code>collect</code> +
+        <code>sort</code>，當時說「要照值排的時候還是得用回來」。這就是那個時候。<code>BTreeMap</code>
+        負責照鍵排，<code>Vec</code> + <code>sort_by</code> 負責照其他任何東西排 —— 兩個都要會，看需求選。
+      </div>
+
+      <div class="win">
+        <div class="kicker">這一課的成果</div>
+        你會讀也會寫 <code>|x| ...</code> 了，而且知道它跟 <code>fn</code>
+        的差別只有一件事：<strong>閉包記得它周圍的變數</strong>。<br /><br />
+        這件事解鎖的是一整類函式 —— <code>filter</code>、<code>map</code>、<code>sort_by</code>、<code>retain</code>、<code>find</code>
+        都是收閉包的。以後在標準庫文件裡看到參數寫 <code>F: FnMut(&amp;T) -&gt; bool</code>，你知道那只是在說「傳一個判斷式進來」。<br /><br />
+        速查表：<a href="../reference/closures.html">閉包速查</a>。
+      </div>
+
+      <p class="source">
+        主要參考資料：<a href="https://doc.rust-lang.org/book/ch13-01-closures.html" target="_blank"
+          >The Rust Programming Language — Chapter 13.1: Closures</a
+        >（繁中版：<a href="https://rust-lang.tw/book-tw/ch13-01-closures.html" target="_blank"
+          >rust-lang.tw</a
+        >）。那一章用一個健身 app 當例子，把 <code>Fn</code> / <code>FnMut</code> / <code>FnOnce</code>
+        的差別做了更完整的展開，值得整章讀完。
+      </p>
+
+      <nav class="lesson-links">
+        <a href="0024-the-type-map.html">&larr; 上一課：型別地圖</a>
+        <a href="#">下一課：待訂 &rarr;</a>
+      </nav>
+
+      <p class="ask-agent">
+        卡住了、或有任何看不懂的地方，直接問我（你的 AI 教學助手）就好 —— 隨時可以打斷這個流程提問。
+      </p>
+    </main>
+  </body>
+</html>

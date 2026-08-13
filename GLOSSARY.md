@@ -217,3 +217,18 @@ A sequence that can push and pop at *both* ends quickly (`push_front` / `push_ba
 
 **泛型參數（`<T>`, `<K, V>`)**:
 The letters in `Vec<T>` / `HashMap<K, V>` are placeholders meaning "any type goes here, and I'll remember which one you chose". Identical in role to TypeScript's `Array<string>`. `T` is conventionally "type", `K`/`V` are "key"/"value" — the names carry no special meaning. Writing your own generic functions is a separate skill from reading them; when reading, treat the angle brackets simply as "what this container holds".
+
+**閉包（Closure）`|x| ...`**:
+A function value that also remembers the local variables around where it was written. That memory is the *only* essential difference from a plain `fn` — writing a `fn` that reads a surrounding local fails with `can't capture dynamic environment in a fn item`, and the compiler itself suggests ``use the `|| { ... }` closure form instead``. Syntactically it's TypeScript's arrow function with different brackets: `|x: i32| -> i32 { x + 1 }` collapses to `|x| x + 1` because the compiler can see the call site. That inference happens once — after the first call fixes `x` to `i32`, a later float argument won't compile.
+
+**捕捉環境（Capturing the environment）**:
+What a closure does to the variables it uses from the surrounding scope. How it captures follows the same three options as [[所有權（Ownership）]]: read-only (`&T`), mutable (`&mut T`), or by value. You never declare which — the compiler reads the closure body and picks the least demanding one that works.
+
+**`Fn` / `FnMut` / `FnOnce`**:
+The three categories a closure falls into, named after what it does to what it captured. `Fn` only reads it, `FnMut` modifies it (the closure variable itself must then be `mut`), `FnOnce` consumes it and can therefore only be called once — `closure cannot be invoked more than once because it moves the variable out of its environment`. These names matter for *reading* signatures, not writing closures: `impl Fn(&str) -> bool` in a parameter means "give me anything callable that takes a `&str`, returns a `bool`, and won't mutate what it captured".
+
+**`move` 閉包**:
+`move ||` forces the closure to take ownership of everything it uses instead of borrowing. Needed when the closure outlives the variables it captured — most commonly `thread::spawn(move || ...)` and async code. After it, the outer scope can no longer use those variables. Not something you write by choice yet; it's something you'll read.
+
+**`sort_by` / `retain` / `sort_by_key`**:
+The `Vec` methods that take a closure. `sort_by(|a, b| a.cmp(b))` sorts ascending; swapping the operands to `b.cmp(a)` reverses it. `sort_by_key(|x| ...)` is the more readable form when you're sorting on one field. `retain(|x| ...)` deletes non-matching elements in place. `retain` is the one that shows off capture — its closure can test against a local variable, which a plain `fn` could never do. See [[HashMap iteration order]] for why sorting a `Vec` is the standard move for human-facing output.

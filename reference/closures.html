@@ -1,0 +1,208 @@
+<!doctype html>
+<html lang="zh-Hant">
+  <head>
+    <meta charset="UTF-8" />
+    <title>參考卡 · 閉包 Closures</title>
+    <link rel="stylesheet" href="../assets/style.css" />
+  </head>
+  <body>
+    <main>
+      <div class="kicker">Reference · Rust</div>
+      <h1>閉包 Closures</h1>
+      <div class="byline">
+        來自 <a href="../lessons/0025-closures.html">Lesson 25</a>。<strong>閉包 = 函式 + 它從周圍捕捉到的變數。</strong>
+      </div>
+
+      <h2>語法</h2>
+
+      <pre><code>let f = |x: i32| -&gt; i32 { x + 1 };   // 完整
+let f = |x: i32| x + 1;             // 省略回傳型別
+let f = |x| x + 1;                  // 兩個都省略（最常見）
+let f = || println!("hi");          // 沒有參數</code></pre>
+
+      <p>
+        參數型別可省略，因為編譯器看得到呼叫端。但只會推斷<strong>一次</strong> —— 第一次用
+        <code>f(1)</code> 之後，<code>x</code> 就定死成 <code>i32</code> 了。
+      </p>
+
+      <h2>跟一般 <code>fn</code> 的差別</h2>
+
+      <table>
+        <thead>
+          <tr>
+            <th></th>
+            <th><code>fn</code></th>
+            <th>閉包</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>讀得到周圍的區域變數</td>
+            <td>不行</td>
+            <td><strong>可以</strong></td>
+          </tr>
+          <tr>
+            <td>參數型別</td>
+            <td>一定要標</td>
+            <td>通常可省略</td>
+          </tr>
+          <tr>
+            <td>型別名稱</td>
+            <td>有（fn pointer）</td>
+            <td>編譯器生成的匿名型別，每個都不同</td>
+          </tr>
+        </tbody>
+      </table>
+
+      <pre><code>error[E0434]: can't capture dynamic environment in a fn item
+  = help: use the `|| { ... }` closure form instead</code></pre>
+
+      <p>看到這個錯誤，就是把該寫閉包的地方寫成 <code>fn</code> 了。</p>
+
+      <h2><code>Fn</code> / <code>FnMut</code> / <code>FnOnce</code></h2>
+
+      <p>不用自己宣告，編譯器看主體怎麼用捕捉到的變數自動決定。讀簽名時才需要分辨。</p>
+
+      <table>
+        <thead>
+          <tr>
+            <th>名字</th>
+            <th>對捕捉到的變數</th>
+            <th>借用方式</th>
+            <th>呼叫次數</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><code>Fn</code></td>
+            <td>只讀</td>
+            <td><code>&amp;T</code></td>
+            <td>無限次</td>
+          </tr>
+          <tr>
+            <td><code>FnMut</code></td>
+            <td>會改</td>
+            <td><code>&amp;mut T</code></td>
+            <td>無限次</td>
+          </tr>
+          <tr>
+            <td><code>FnOnce</code></td>
+            <td>消耗掉</td>
+            <td>取得所有權</td>
+            <td>一次</td>
+          </tr>
+        </tbody>
+      </table>
+
+      <pre><code>// FnMut：改到外面的變數，閉包本身要標 mut
+let mut total = 0;
+let mut add = |x: i32| total += x;
+add(1); add(2);
+println!("{}", total);          // 3
+
+// FnOnce：呼叫第二次會編譯失敗
+let owned = String::from("hi");
+let consume = move || owned;
+consume();
+// note: closure cannot be invoked more than once because it moves
+//       the variable `owned` out of its environment</code></pre>
+
+      <h2><code>move</code></h2>
+
+      <p>
+        強迫閉包取得用到的變數的<strong>所有權</strong>，而不是借用。用在閉包會活得比原本的變數久的時候 ——
+        最常見是 <code>thread::spawn(move || ...)</code> 和非同步。加了之後外面就不能再用那些變數了。
+      </p>
+
+      <h2>簽名怎麼讀</h2>
+
+      <pre><code>fn count_if(text: &amp;str, test: impl Fn(&amp;str) -&gt; bool) -&gt; usize {
+    text.lines().filter(|line| test(line)).count()
+}</code></pre>
+
+      <table>
+        <thead>
+          <tr>
+            <th>片段</th>
+            <th>意思</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><code>impl</code></td>
+            <td>任何型別都行，只要符合後面的條件</td>
+          </tr>
+          <tr>
+            <td><code>Fn</code></td>
+            <td>能被呼叫，而且只讀取捕捉到的變數</td>
+          </tr>
+          <tr>
+            <td><code>(&amp;str)</code></td>
+            <td>呼叫時要傳一個 <code>&amp;str</code></td>
+          </tr>
+          <tr>
+            <td><code>-&gt; bool</code></td>
+            <td>回傳 <code>bool</code></td>
+          </tr>
+        </tbody>
+      </table>
+
+      <table>
+        <thead>
+          <tr>
+            <th>寫法</th>
+            <th>意思</th>
+            <th>用在哪</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><code>impl Fn(...)</code></td>
+            <td>某一個特定閉包型別，編譯期決定</td>
+            <td>參數位置</td>
+          </tr>
+          <tr>
+            <td><code>Box&lt;dyn Fn(...)&gt;</code></td>
+            <td>放在堆積上，執行期才知道是哪一個</td>
+            <td>存進 struct 或 <code>Vec</code></td>
+          </tr>
+          <tr>
+            <td><code>F: FnMut(&amp;T) -&gt; bool</code></td>
+            <td>標準庫文件的寫法，同一件事</td>
+            <td><code>filter</code>、<code>retain</code> 等</td>
+          </tr>
+        </tbody>
+      </table>
+
+      <h2>常用的收閉包的方法</h2>
+
+      <pre><code>// 過濾（產生新的疊代器）
+let n = text.lines().filter(|line| line.starts_with("//")).count();
+
+// 就地刪掉不符合的元素
+let min = 2;
+pairs.retain(|pair| *pair.1 &gt;= min);
+
+// 自訂排序：a.cmp(b) 由小到大，b.cmp(a) 由大到小
+pairs.sort_by(|a, b| b.1.cmp(a.1));
+
+// 依某個欄位排序（更好讀的版本）
+pairs.sort_by_key(|pair| *pair.1);
+
+// 轉換每個元素
+let lens: Vec&lt;usize&gt; = words.iter().map(|w| w.len()).collect();
+
+// 找第一個符合的
+let first = words.iter().find(|w| w.len() &gt; 3);</code></pre>
+
+      <p class="source">
+        來源：<a href="https://doc.rust-lang.org/book/ch13-01-closures.html" target="_blank"
+          >TRPL Chapter 13.1: Closures</a
+        >（繁中版：<a href="https://rust-lang.tw/book-tw/ch13-01-closures.html" target="_blank">rust-lang.tw</a>）。相關參考卡：<a
+          href="ownership-and-borrowing.html"
+          >所有權與借用</a
+        >、<a href="std-types.html">標準庫型別地圖</a>。
+      </p>
+    </main>
+  </body>
+</html>
