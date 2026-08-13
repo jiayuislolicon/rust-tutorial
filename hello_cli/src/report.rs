@@ -1,5 +1,5 @@
 use crate::errors::AppError;
-use std::collections::HashMap;
+use std::collections::BTreeMap;
 use std::fs;
 
 pub struct Report {
@@ -66,8 +66,8 @@ impl Report {
         (empty_counts, comment_counts, code_counts)
     }
 
-    pub fn word_counts(&self) -> HashMap<String, usize> {
-        let mut counts = HashMap::new();
+    pub fn word_counts(&self) -> BTreeMap<String, usize> {
+        let mut counts = BTreeMap::new();
 
         for word in self.content.split_whitespace() {
             *counts.entry(word.to_string()).or_insert(0) += 1;

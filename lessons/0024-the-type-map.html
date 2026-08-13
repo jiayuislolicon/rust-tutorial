@@ -1,0 +1,533 @@
+<!doctype html>
+<html lang="zh-Hant">
+  <head>
+    <meta charset="UTF-8" />
+    <title>Lesson 24 · 型別地圖：標準庫給了你哪些容器，為什麼要分這麼細</title>
+    <link rel="stylesheet" href="../assets/style.css" />
+    <script src="../assets/quiz.js"></script>
+  </head>
+  <body>
+    <main>
+      <div class="kicker">Lesson 0024 · Rust · CLI 工具養成路線</div>
+      <h1>型別地圖：標準庫給了你哪些容器，為什麼要分這麼細</h1>
+      <div class="byline">
+        <strong>學習目標：</strong>建立一套「看到陌生型別就能定位它」的方法。學完你要能對任何一個型別回答三個問題：誰擁有資料、大小固不固定、能不能改 —— 並且知道 Rust 為什麼不肯只給你一種容器。
+      </div>
+
+      <h2>1. 你會卡在哪</h2>
+
+      <p>
+        你打開一個沒看過的 Rust 檔案，函式簽名長這樣：
+      </p>
+
+      <pre><code>fn render(items: &amp;[Item], index: &amp;BTreeMap&lt;String, usize&gt;) -&gt; Result&lt;String, Box&lt;dyn Error&gt;&gt;</code></pre>
+
+      <p>
+        你認得 <code>String</code>、<code>usize</code>、<code>Result</code>。但另外那些是什麼？
+      </p>
+
+      <p>
+        更麻煩的是你分不出來<strong>哪些是重點、哪些只是雜訊</strong>。<code>&amp;[Item]</code> 跟 <code>Vec&lt;Item&gt;</code> 差在哪，是無關緊要的寫法差異，還是作者刻意的決定？<code>BTreeMap</code> 為什麼不是 <code>HashMap</code>？
+      </p>
+
+      <p>
+        沒有地圖的時候，你只能一個一個查，查完也串不起來。這一課要給你的不是一張型別清單 —— 是一個<strong>能自己推出答案的框架</strong>。
+      </p>
+
+      <h2>2. 一切的分水嶺：編譯器需要知道「你要佔多大位子」</h2>
+
+      <p>
+        Rust 之所以會設計出這麼多種容器，背後的根本原因只有一個：<strong>編譯器在打包程式時，必須精準知道每個變數需要多大的記憶體空間。</strong>
+      </p>
+
+      <p>
+        這就像是安排劇院座位，你必須先告訴售票員你需要幾個位子，他才能幫你劃位。編譯器要產生機器碼時，也必須預先劃好記憶體空間。
+      </p>
+
+      <p>
+        我們可以眼見為憑。呼叫 <code>std::mem::size_of</code>，就能直接看穿各個型別的「真實體積」（單位是位元組）：
+      </p>
+
+      <pre><code>use std::mem::size_of;
+
+fn main() {
+    println!("{}", size_of::&lt;[i32; 3]&gt;());  // 12
+    println!("{}", size_of::&lt;Vec&lt;i32&gt;&gt;());  // 24
+    println!("{}", size_of::&lt;String&gt;());    // 24
+    println!("{}", size_of::&lt;&amp;str&gt;());      // 16
+    println!("{}", size_of::&lt;&amp;i32&gt;());      //  8
+}</code></pre>
+
+      <p>
+        這些數字背後，藏著 Rust 處理資料的秘密：
+      </p>
+
+      <ul>
+        <li>
+          <strong><code>[i32; 3]</code> 佔 12 位元組。</strong>因為它實實在在地裝了三個 <code>i32</code>（每個 4 位元組）。資料<em>本體</em>就安安穩穩地躺在那裡。
+        </li>
+        <li>
+          <strong><code>Vec&lt;i32&gt;</code> 佔 24 位元組，而且不管裡面裝三個還是三百萬個，都是 24。</strong>為什麼？因為 <code>Vec</code> 本身不裝真實資料，它只是一個「遙控器」，裡面記錄了三件事：資料在哪裡（指標，8 位元組）、現在裝了幾個（長度，8 位元組）、最多可以裝幾個（容量，8 位元組）。真正的資料被放在記憶體的另一個角落（堆積，Heap）。
+        </li>
+        <li>
+          <strong><code>String</code> 也是 24 位元組，理由完全相同。</strong>在底層，<code>String</code> 其實就是一個確保內容是合法 UTF-8 文字的 <code>Vec&lt;u8&gt;</code>。
+        </li>
+        <li>
+          <strong><code>&amp;str</code> 佔 16 位元組。</strong>它包含一個指標和一個長度，沒有容量。因為它只是一個「借來看的視窗」，不能隨意擴充大小。
+        </li>
+      </ul>
+
+      <p>
+        因此，當我們說「大小固定」時，要釐清是誰的大小：<code>Vec</code> <em>這個變數本身</em>的大小是永遠固定的（24 位元組），所以編譯器能輕易幫它劃位；而它<em>所指向的內容</em>則是可變的。這就是為什麼它能被放在固定大小的空間裡，卻能擁有無限擴充的魔力。
+      </p>
+
+      <div class="callout tip">
+        💡 <strong>TypeScript 對照：</strong>在 JS 裡，所有的物件和陣列都是「遙控器」（引用型別），真實資料一律丟到堆積（heap）上，你不需要也無法干涉。但 Rust 把選擇權交給你：你要把資料直接塞在原地（<code>[i32; 3]</code>），還是把資料放遠一點，原地只留一個遙控器（<code>Vec&lt;i32&gt;</code>）？這份多出來的選擇權，就是 Rust 型別看起來這麼多的原因。
+      </div>
+
+      <h3>當編譯器算不出大小時，它會直接罷工</h3>
+
+      <p>
+        這絕不是紙上談兵。如果你寫出一個讓編譯器算不出大小的型別，它會當場報錯：
+      </p>
+
+      <pre><code>enum List {
+    Node(i32, List),   // 俄羅斯娃娃：一個 List 裡面又包著一個 List
+    End,
+}</code></pre>
+
+      <p>
+        編譯器會這樣抱怨：
+      </p>
+
+      <pre><code>error[E0072]: recursive type `List` has infinite size
+  |
+2 |     Node(i32, List),
+  |               ---- recursive without indirection
+  |
+help: insert some indirection (e.g., a `Box`, `Rc`, or `&amp;`) to break the cycle
+  |
+2 |     Node(i32, Box&lt;List&gt;),</code></pre>
+
+      <p>
+        <code>infinite size</code>（無限大小）—— 因為 <code>List</code> 裡面有 <code>List</code>，編譯器在計算體積時陷入了無窮迴圈。但它很貼心地給了解法：包一層 <code>Box</code>。<code>Box</code> 的魔法在於「把龐大的資料搬到別處，原地只留下一個大小永遠是 8 位元組的指標」。
+      </p>
+
+      <p>
+        關於 <code>Box</code> 的詳細用法我們會在第 30 課深入探討。現在你只需要記住這個核心觀念：<strong>當資料大小無法預測時，就用一層指標（像 <code>Box</code> 或 <code>&amp;</code>）把它變成固定大小。</strong>
+      </p>
+
+      <h2>3. 三個問題，定位任何型別</h2>
+
+      <p>
+        這是這一課真正要你帶走的東西。看到任何陌生型別，問三個問題：
+      </p>
+
+      <table>
+        <thead>
+          <tr>
+            <th>問題</th>
+            <th>看什麼</th>
+            <th>例子</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><strong>誰擁有這份資料？</strong></td>
+            <td>開頭有沒有 <code>&amp;</code>。有就是借來的，用完要還，你不能決定它的生死。</td>
+            <td><code>String</code> 擁有；<code>&amp;str</code> 借用</td>
+          </tr>
+          <tr>
+            <td><strong>數量能不能變？</strong></td>
+            <td>是不是寫死在型別裡。方括號裡有數字就是寫死的。</td>
+            <td><code>[i32; 3]</code> 固定三個；<code>Vec&lt;i32&gt;</code> 可增可減</td>
+          </tr>
+          <tr>
+            <td><strong>能不能改？</strong></td>
+            <td><code>mut</code> 或 <code>&amp;mut</code>。兩者都沒有就是唯讀。</td>
+            <td><code>&amp;[i32]</code> 只能讀；<code>&amp;mut [i32]</code> 可以改</td>
+          </tr>
+      </tbody>
+      </table>
+
+      <p>
+        拿開場那個簽名試一次：
+      </p>
+
+      <pre><code>fn render(items: &amp;[Item], index: &amp;BTreeMap&lt;String, usize&gt;) -&gt; ...</code></pre>
+
+      <ul>
+        <li><strong><code>&amp;[Item]</code></strong>：借來的、一串 <code>Item</code>、不能改。所以 <code>render</code> 只是要讀過去，不會動到你的資料，也不會把它拿走。</li>
+        <li><strong><code>&amp;BTreeMap&lt;String, usize&gt;</code></strong>：借來的、鍵是 <code>String</code> 值是 <code>usize</code> 的對應表、不能改。</li>
+      </ul>
+
+      <p>
+        你還不知道 <code>Item</code> 是什麼、也不知道 <code>render</code> 在做什麼。但你已經知道<strong>這個函式不會偷走或破壞你的東西</strong>。這件事光看簽名就成立，不用翻實作。
+      </p>
+
+      <h2>4. 為什麼是 <code>&amp;[Item]</code> 而不是 <code>&amp;Vec&lt;Item&gt;</code></h2>
+
+      <p>
+        這是你讀 Rust 會一直遇到的一組。<code>&amp;[T]</code> 叫做 <strong>slice（切片）</strong>：一段連續資料的視窗，只有「從哪開始」和「有幾個」。
+      </p>
+
+      <p>
+        差別在於<strong>誰能傳進來</strong>：
+      </p>
+
+      <pre><code>fn total(nums: &amp;[i32]) -&gt; i32 {
+    nums.iter().sum()
+}
+
+fn main() {
+    let arr: [i32; 3] = [1, 2, 3];
+    let vec: Vec&lt;i32&gt; = vec![1, 2, 3];
+
+    println!("{}", total(&amp;arr));  // 6
+    println!("{}", total(&amp;vec));  // 6
+}</code></pre>
+
+      <p>
+        同一個函式，陣列和 <code>Vec</code> 都吃得下。如果參數寫成 <code>&amp;Vec&lt;i32&gt;</code>，陣列那行就會編譯失敗。
+      </p>
+
+      <p>
+        所以慣例是：<strong>參數收 <code>&amp;[T]</code>，回傳給 <code>Vec&lt;T&gt;</code>。</strong>收的時候放寬，給的時候給完整的所有權。
+      </p>
+
+      <div class="callout">
+        <code>&amp;str</code> 和 <code>String</code> 就是這組關係的字串版本。<code>&amp;str</code> 是 <code>&amp;[u8]</code> 的文字版，<code>String</code> 是 <code>Vec&lt;u8&gt;</code> 的文字版。第 12 課那個「參數收 <code>&amp;str</code>」的建議，跟這裡是同一條規則。詳見 <a href="../reference/string-types.html">字串型別參考卡</a>。
+      </div>
+
+      <h2>5. 型別地圖</h2>
+
+      <p>
+        標準庫的容器就這些，數量不多：
+      </p>
+
+      <table>
+        <thead>
+          <tr>
+            <th>型別</th>
+            <th>做什麼</th>
+            <th>什麼時候用它</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><code>Vec&lt;T&gt;</code></td>
+            <td>可增長的序列，有順序，可用索引</td>
+            <td>預設選項。不確定用什麼就用它</td>
+          </tr>
+          <tr>
+            <td><code>&amp;[T]</code></td>
+            <td><code>Vec</code> 或陣列的唯讀視窗</td>
+            <td>函式參數。讓呼叫端有更多選擇</td>
+          </tr>
+          <tr>
+            <td><code>[T; N]</code></td>
+            <td>長度寫死在型別裡的陣列</td>
+            <td>數量真的永遠固定，例如 RGB 三個值</td>
+          </tr>
+          <tr>
+            <td><code>String</code> / <code>&amp;str</code></td>
+            <td>擁有的文字 / 借來的文字</td>
+            <td>同上一組的關係</td>
+          </tr>
+          <tr>
+            <td><code>HashMap&lt;K, V&gt;</code></td>
+            <td>鍵找值，最快，沒有順序</td>
+            <td>只在乎查得快，輸出順序無所謂</td>
+          </tr>
+          <tr>
+            <td><code>BTreeMap&lt;K, V&gt;</code></td>
+            <td>鍵找值，永遠按鍵排序</td>
+            <td>要照順序輸出，或要找「範圍內的鍵」</td>
+          </tr>
+          <tr>
+            <td><code>HashSet&lt;T&gt;</code></td>
+            <td>只記有沒有，自動去重</td>
+            <td>「這個看過了嗎」、去掉重複</td>
+          </tr>
+          <tr>
+            <td><code>VecDeque&lt;T&gt;</code></td>
+            <td>頭尾兩端都能快速進出</td>
+            <td>佇列、需要 <code>push_front</code> 的時候</td>
+          </tr>
+          <tr>
+            <td><code>Option&lt;T&gt;</code></td>
+            <td>有一個 <code>T</code>，或什麼都沒有</td>
+            <td>值可能不存在，而且不存在是正常的</td>
+          </tr>
+          <tr>
+            <td><code>Result&lt;T, E&gt;</code></td>
+            <td>成功帶 <code>T</code>，失敗帶 <code>E</code></td>
+            <td>操作可能失敗，而且失敗要說明原因</td>
+          </tr>
+          <tr>
+            <td><code>Box&lt;T&gt;</code></td>
+            <td>把 <code>T</code> 放遠一點，這裡留指標</td>
+            <td>大小算不出來的時候（第 30 課）</td>
+          </tr>
+        </tbody>
+      </table>
+
+      <p>
+        <code>Option</code> 和 <code>Result</code> 你已經在用了。把它們放進這張表，是因為它們跟其他的是同一類東西 —— <strong>包住別的型別、並且附帶一個規則的容器</strong>。<code>Vec</code> 附帶的規則是「有很多個」，<code>Option</code> 附帶的規則是「可能沒有」。形式上沒有高下之分。
+      </p>
+
+      <h2>6. 為什麼要分這麼細</h2>
+
+      <p>
+        因為<strong>每一個都是一組取捨，而 Rust 不幫你選。</strong>
+      </p>
+
+      <p>
+        最好的示範是 <code>HashMap</code> 跟 <code>BTreeMap</code>。介面幾乎一樣，行為差一件事：
+      </p>
+
+      <pre><code>use std::collections::{BTreeMap, HashMap};
+
+fn main() {
+    let mut h: HashMap&lt;&amp;str, i32&gt; = HashMap::new();
+    let mut b: BTreeMap&lt;&amp;str, i32&gt; = BTreeMap::new();
+
+    for (k, v) in [("pear", 1), ("apple", 3), ("mango", 2), ("kiwi", 5)] {
+        h.insert(k, v);
+        b.insert(k, v);
+    }
+
+    println!("{:?}", h.keys().collect::&lt;Vec&lt;_&gt;&gt;());
+    println!("{:?}", b.keys().collect::&lt;Vec&lt;_&gt;&gt;());
+}</code></pre>
+
+      <p>
+        我連續跑了三次，這是真實輸出：
+      </p>
+
+      <pre><code>HashMap  keys: ["pear", "apple", "kiwi", "mango"]
+BTreeMap keys: ["apple", "kiwi", "mango", "pear"]
+
+HashMap  keys: ["apple", "kiwi", "mango", "pear"]
+BTreeMap keys: ["apple", "kiwi", "mango", "pear"]
+
+HashMap  keys: ["apple", "mango", "kiwi", "pear"]
+BTreeMap keys: ["apple", "kiwi", "mango", "pear"]</code></pre>
+
+      <p>
+        <code>BTreeMap</code> 三次都一樣。<code>HashMap</code> 三次都不同 —— 第二次剛好排序了，那是巧合，不是保證。
+      </p>
+
+      <p>
+        代價在哪：<code>BTreeMap</code> 為了維持順序，插入和查詢都比 <code>HashMap</code> 慢一些。所以這不是「<code>BTreeMap</code> 比較好」，是<strong>兩個不同的東西，你要自己決定要哪一個</strong>。
+      </p>
+
+      <p>
+        <code>HashSet</code> 的存在也是同一個邏輯 —— 當你只在乎「有沒有」的時候，值那一欄是浪費的：
+      </p>
+
+      <pre><code>use std::collections::HashSet;
+
+fn main() {
+    let mut seen: HashSet&lt;&amp;str&gt; = HashSet::new();
+
+    println!("{}", seen.insert("apple"));  // true  ← 第一次，是新的
+    println!("{}", seen.insert("apple"));  // false ← 已經有了
+    println!("{}", seen.len());            // 1
+}</code></pre>
+
+      <p>
+        <code>insert</code> 回傳 <code>bool</code> 告訴你「這是不是第一次看到」。要判斷重複，這一行就夠了。
+      </p>
+
+      <div class="callout tip">
+        💡 <strong>跟 TypeScript 的差別在哪：</strong>JS 也有 <code>Map</code> 和 <code>Set</code>，概念一樣。但 JS 沒有 <code>BTreeMap</code>／<code>VecDeque</code> 這種層級的選擇，因為 JS 的設計哲學是「給你一個夠用的，細節引擎處理」。Rust 的哲學相反：<strong>把取捨攤在型別上，讓你在寫的時候就選好</strong>。所以型別看起來變多了，但每一個都在替你記住一個決定 —— 這也是為什麼讀 Rust 的時候，型別本身就是資訊。
+      </div>
+
+      <h2>7. 角括號裡的那個字母</h2>
+
+      <p>
+        <code>Vec&lt;T&gt;</code>、<code>Option&lt;T&gt;</code>、<code>HashMap&lt;K, V&gt;</code> —— 這些大寫字母是<strong>泛型參數</strong>，意思是「這裡填什麼型別都行，你填了我就記住」。
+      </p>
+
+      <p>
+        跟 TypeScript 完全一樣：
+      </p>
+
+      <div class="compare">
+        <h3>TypeScript</h3>
+        <pre><code>const xs: Array&lt;string&gt; = [];
+xs.push("a");
+xs.push(1);  // 型別錯誤</code></pre>
+      </div>
+
+      <div class="compare">
+        <h3>Rust</h3>
+        <pre><code>let mut xs: Vec&lt;String&gt; = Vec::new();
+xs.push("a".to_string());
+xs.push(1);  // 型別錯誤</code></pre>
+      </div>
+
+      <p>
+        <code>T</code> 只是慣用的名字（type），<code>K</code>／<code>V</code> 是 key／value。名字沒有魔力，換成別的字母也一樣。
+      </p>
+
+      <p>
+        <strong>怎麼自己寫出帶 <code>&lt;T&gt;</code> 的函式和型別，是第 27 課的內容。</strong>這一課只要能讀懂就好：看到角括號，先把它當成「這個容器裡裝的是什麼」。
+      </p>
+
+      <hr />
+
+      <div class="quiz" data-mcq data-answer="3">
+        <div class="q">
+          小測驗一：為什麼 <code>size_of::&lt;Vec&lt;i32&gt;&gt;()</code> 不管裡面裝幾個元素，答案都是 24？
+        </div>
+        <div class="choices">
+          <button>因為它一次最多只能裝下二十四個元素</button>
+          <button>因為編譯器會把超出的部分自動壓縮起來</button>
+          <button>因為它只存指標和長度，資料放在另一個地方</button>
+        </div>
+        <div
+          class="feedback"
+          data-ok="正確！Vec 本身是三個 8 位元組的數字：指標、長度、容量。真正的資料在別處，所以 Vec 這個值本身的大小永遠固定 —— 這也正是它能被放進固定大小的槽位、又能無限長大的原因。"
+          data-bad="不對喔。24 是三個 8 位元組欄位加起來：指標（資料在哪）、長度（現在幾個）、容量（還能塞幾個）。資料本身不在 Vec 裡面，所以裝多少都不影響 Vec 這個值的大小。"
+        ></div>
+      </div>
+
+      <div class="quiz" data-mcq data-answer="1">
+        <div class="q">
+          小測驗二：函式參數寫 <code>&amp;[i32]</code> 而不寫 <code>&amp;Vec&lt;i32&gt;</code>，得到的好處是什麼？
+        </div>
+        <div class="choices">
+          <button>陣列和 Vec 都能直接傳進來，呼叫端選擇變多</button>
+          <button>參數會被複製一份，函式內修改不影響外面</button>
+          <button>編譯器會自動排序內容，輸出順序變得穩定</button>
+        </div>
+        <div
+          class="feedback"
+          data-ok="正確！&amp;[i32] 是一段連續資料的視窗，[i32; 3] 和 Vec&lt;i32&gt; 都能提供這樣的視窗。寫成 &amp;Vec&lt;i32&gt; 的話，陣列就傳不進來了。慣例：參數收 &amp;[T]，回傳給 Vec&lt;T&gt;。"
+          data-bad="不對喔。關鍵是呼叫端的彈性：&amp;[i32] 同時吃得下陣列和 Vec，&amp;Vec&lt;i32&gt; 只吃得下 Vec。（順帶一提，&amp;開頭本來就是借用，不會複製也不能改。）"
+        ></div>
+      </div>
+
+      <div class="quiz" data-mcq data-answer="2">
+        <div class="q">
+          小測驗三：你要輸出一份「詞 → 次數」而且要求每次執行順序都一樣。哪個選擇最直接？
+        </div>
+        <div class="choices">
+          <button>換成 HashSet，它會自動處理掉順序問題</button>
+          <button>換成 BTreeMap，它本來就照鍵的順序走訪</button>
+          <button>換成 VecDeque，從前端插入就能保持順序</button>
+        </div>
+        <div
+          class="feedback"
+          data-ok="正確！BTreeMap 維持鍵的排序，走訪出來就是有序的，不用自己 collect 加 sort。代價是插入和查詢比 HashMap 稍慢 —— 這就是這一課說的取捨。"
+          data-bad="不對喔。要按鍵排序的輸出，BTreeMap 是直接對應的工具。HashSet 不存值，VecDeque 沒有鍵，兩個都解不了這個問題。"
+        ></div>
+      </div>
+
+      <h2>換你動手</h2>
+
+      <p>
+        這一課有兩個練習。第一個是驗證，第二個是把新知識裝回 <code>hello_cli</code>。
+      </p>
+
+      <div class="callout">
+        <strong>練習一：先猜，再跑。</strong>
+        <ol>
+          <li>
+            在任何地方開一個 <code>types.rs</code>，把上面第 2 節的 <code>size_of</code> 程式、第 6 節的 <code>HashMap</code>／<code>BTreeMap</code> 程式、還有 <code>HashSet</code> 程式抄進同一個 <code>main</code>。
+          </li>
+          <li>
+            <strong>執行前先在紙上（或註解裡）寫下你猜的每一行輸出。</strong>這一步不能跳 —— 猜錯的地方才是你真正學到東西的地方。
+          </li>
+          <li>
+            <code>rustc types.rs &amp;&amp; ./types</code>，對答案。
+          </li>
+          <li>
+            額外試一件事：把 <code>size_of::&lt;Vec&lt;i32&gt;&gt;()</code> 改成 <code>size_of::&lt;Vec&lt;String&gt;&gt;()</code>。猜猜看數字會不會變，然後驗證你的猜測。
+          </li>
+        </ol>
+      </div>
+
+      <div class="callout">
+        <strong>練習二：把 <code>word_counts</code> 換成 <code>BTreeMap</code>。</strong>
+        <ol>
+          <li>
+            <code>report.rs</code>：把 <code>use std::collections::HashMap;</code> 換成 <code>BTreeMap</code>，<code>word_counts</code> 的回傳型別和 <code>HashMap::new()</code> 也一起換。<code>entry().or_insert()</code> 那行完全不用動 —— 兩者的介面是一樣的。
+          </li>
+          <li>
+            <code>main.rs</code>：<code>--words</code> 那一段現在可以簡化。<code>BTreeMap</code> 走訪本來就有序，所以 <code>collect</code> 成 <code>Vec</code> 再 <code>sort()</code> 的那兩行可以刪掉，直接 <code>for (word, count) in counts</code>。
+          </li>
+          <li>
+            <code>cargo test</code>：五個測試應該全過，<strong>一行都不用改</strong>。想一下為什麼 —— 測試只用了 <code>.get()</code> 和 <code>.len()</code>，那是兩者共通的介面。
+          </li>
+        </ol>
+      </div>
+
+      <div class="callout tip">
+        💡 <strong>別誤會這個練習的意思。</strong>不是說 <code>BTreeMap</code> 比較好，所以 23 課教錯了。<code>collect</code> + <code>sort</code> 那條路你還是需要 —— 一旦你想改成<em>按次數</em>排序（次數多的在前），<code>BTreeMap</code> 就幫不上忙了，因為它只排鍵。這個練習要你體會的是：<strong>選對型別，程式碼會自己變短；選錯，你就得手動補上那個型別本來會給你的東西。</strong>
+      </div>
+
+      <p>
+        <strong>驗證條件：</strong>
+      </p>
+
+      <table>
+        <thead>
+          <tr>
+            <th>指令</th>
+            <th>預期</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><code>cargo test</code></td>
+            <td>5 passed，且你沒有改動任何測試</td>
+          </tr>
+          <tr>
+            <td><code>cargo run -- --words words.txt</code></td>
+            <td><code>apple 3</code> / <code>banana 2</code> / <code>cherry 1</code>，跟換之前一模一樣</td>
+          </tr>
+          <tr>
+            <td><code>cargo run -- notes.txt</code></td>
+            <td>沒受影響</td>
+          </tr>
+        </tbody>
+      </table>
+
+      <div class="win">
+        <div class="kicker">這一課的成果</div>
+        你有一個框架了。看到陌生型別，問三件事：<strong>誰擁有、大小固不固定、能不能改</strong>。這三個問題能定位標準庫裡幾乎每一個容器，之後也能定位別人自訂的型別。<br /><br />
+        更重要的是那個「為什麼」：Rust 的型別之所以多，是因為它把取捨攤開來讓你選，而不是替你決定。所以在 Rust 裡，<strong>型別本身就攜帶資訊</strong> —— 作者選了 <code>BTreeMap</code> 而不是 <code>HashMap</code>，那是一個決定，不是隨手寫的。讀 code 的時候這件事會一直幫到你。<br /><br />
+        速查表：<a href="../reference/std-types.html">標準庫型別地圖</a>。
+      </div>
+
+      <p class="source">
+        主要參考資料：<a
+          href="https://doc.rust-lang.org/std/collections/index.html"
+          target="_blank"
+          >std::collections 模組文件</a
+        > —— 開頭那節「Which collection should I use?」就是官方版的選型指南，是這一課第 5、6 節的來源。搭配 <a
+          href="https://doc.rust-lang.org/book/ch08-00-common-collections.html"
+          target="_blank"
+          >The Rust Programming Language — Chapter 8: Common Collections</a
+        >（繁中版：<a
+          href="https://rust-lang.tw/book-tw/ch08-00-common-collections.html"
+          target="_blank"
+          >rust-lang.tw</a
+        >）。
+      </p>
+
+      <nav class="lesson-links">
+        <a href="0023-hashmap.html">&larr; 上一課：HashMap</a>
+        <a href="#">下一課：閉包 Closures &rarr;</a>
+      </nav>
+
+      <p class="ask-agent">
+        卡住了、或有任何看不懂的地方，直接問我（你的 AI 教學助手）就好 ——
+        隨時可以打斷這個流程提問。
+      </p>
+    </main>
+  </body>
+</html>

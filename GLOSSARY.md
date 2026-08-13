@@ -199,3 +199,21 @@ Unspecified. Not insertion order, not sorted order, and not even stable between 
 
 **`.split_whitespace()`**:
 Splits a `&str` into an iterator of words on any whitespace run. One of the string-specific iterator sources alongside `.lines()` and `.chars()`. Yields borrowed `&str`s, so storing them as `HashMap` keys needs `.to_string()`. See [[Iterator（疊代器）]].
+
+**Slice（切片）`&[T]`**:
+A read-only window onto a run of contiguous elements — just a pointer and a length (16 bytes), no capacity, because a borrowed view can't grow. Both `[T; N]` and `Vec<T>` can hand one out, which is why the convention is *take `&[T]` as a parameter, return `Vec<T>`*: the parameter form accepts more callers, the return form gives back full ownership. `&str` is the text-specific version of the same idea. See [[`String` vs `&str`]].
+
+**大小在編譯期必須已知**:
+The single constraint that shapes Rust's whole type system: the compiler must know how many bytes a value occupies before it can emit code that stores it. `size_of::<Vec<i32>>()` is 24 no matter how many elements it holds, because a `Vec` value *is* three 8-byte fields (pointer, length, capacity) and the data lives elsewhere. A type whose size can't be computed is rejected outright — `recursive type 'List' has infinite size` — and the fix the compiler suggests is `Box`, which replaces the unknown-sized thing with a pointer.
+
+**`BTreeMap<K, V>`**:
+Same interface as `HashMap` (`insert`, `get`, `entry().or_insert()`), one behavioural difference: iteration is always in key order, and it's stable across runs. Costs slightly slower insert and lookup than `HashMap`. Use it when the output is for a human or when you need range queries; use `HashMap` when only lookup speed matters. Swapping one for the other is usually a three-line change. See [[HashMap iteration order]].
+
+**`HashSet<T>`**:
+A `HashMap` with no value column — it records only whether something is present. `.insert(x)` returns `bool`: `true` the first time, `false` if it was already there, which makes dedup and "have I seen this?" a single line. `.contains(&x)` reads it back.
+
+**`VecDeque<T>`**:
+A sequence that can push and pop at *both* ends quickly (`push_front` / `push_back` / `pop_front` / `pop_back`). `Vec` is fast only at the back. Reach for it when you need a queue.
+
+**泛型參數（`<T>`, `<K, V>`)**:
+The letters in `Vec<T>` / `HashMap<K, V>` are placeholders meaning "any type goes here, and I'll remember which one you chose". Identical in role to TypeScript's `Array<string>`. `T` is conventionally "type", `K`/`V` are "key"/"value" — the names carry no special meaning. Writing your own generic functions is a separate skill from reading them; when reading, treat the angle brackets simply as "what this container holds".

@@ -1,0 +1,201 @@
+<!doctype html>
+<html lang="zh-Hant">
+  <head>
+    <meta charset="UTF-8" />
+    <title>參考卡 · 標準庫型別地圖</title>
+    <link rel="stylesheet" href="../assets/style.css" />
+  </head>
+  <body>
+    <main>
+      <div class="kicker">Reference · Rust</div>
+      <h1>標準庫型別地圖</h1>
+      <div class="byline">
+        來自 <a href="../lessons/0024-the-type-map.html">Lesson 24</a>。看到陌生型別時的定位工具。
+      </div>
+
+      <h2>三個問題</h2>
+
+      <table>
+        <thead>
+          <tr>
+            <th>問題</th>
+            <th>看什麼</th>
+            <th>對照</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>誰擁有這份資料？</td>
+            <td>開頭有沒有 <code>&amp;</code></td>
+            <td><code>String</code> 擁有 / <code>&amp;str</code> 借用</td>
+          </tr>
+          <tr>
+            <td>數量能不能變？</td>
+            <td>長度有沒有寫進型別</td>
+            <td><code>[i32; 3]</code> 固定 / <code>Vec&lt;i32&gt;</code> 可變</td>
+          </tr>
+          <tr>
+            <td>能不能改？</td>
+            <td><code>mut</code> / <code>&amp;mut</code></td>
+            <td><code>&amp;[i32]</code> 唯讀 / <code>&amp;mut [i32]</code> 可改</td>
+          </tr>
+        </tbody>
+      </table>
+
+      <h2>容器一覽</h2>
+
+      <table>
+        <thead>
+          <tr>
+            <th>型別</th>
+            <th>做什麼</th>
+            <th>什麼時候用</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><code>Vec&lt;T&gt;</code></td>
+            <td>可增長序列，有順序，可索引</td>
+            <td>預設選項</td>
+          </tr>
+          <tr>
+            <td><code>&amp;[T]</code></td>
+            <td>唯讀視窗（slice）</td>
+            <td>函式參數</td>
+          </tr>
+          <tr>
+            <td><code>[T; N]</code></td>
+            <td>長度寫死在型別裡</td>
+            <td>數量永遠固定</td>
+          </tr>
+          <tr>
+            <td><code>String</code> / <code>&amp;str</code></td>
+            <td>擁有 / 借用的文字</td>
+            <td>同 <code>Vec</code> / <code>&amp;[T]</code> 的關係</td>
+          </tr>
+          <tr>
+            <td><code>HashMap&lt;K, V&gt;</code></td>
+            <td>鍵找值，最快，無順序</td>
+            <td>只在乎查得快</td>
+          </tr>
+          <tr>
+            <td><code>BTreeMap&lt;K, V&gt;</code></td>
+            <td>鍵找值，永遠按鍵排序</td>
+            <td>要有序輸出或範圍查詢</td>
+          </tr>
+          <tr>
+            <td><code>HashSet&lt;T&gt;</code></td>
+            <td>只記有沒有，自動去重</td>
+            <td>「看過了嗎」、去重</td>
+          </tr>
+          <tr>
+            <td><code>VecDeque&lt;T&gt;</code></td>
+            <td>頭尾都能快速進出</td>
+            <td>佇列、需要 <code>push_front</code></td>
+          </tr>
+          <tr>
+            <td><code>Option&lt;T&gt;</code></td>
+            <td>有 <code>T</code> 或什麼都沒有</td>
+            <td>不存在是正常狀況</td>
+          </tr>
+          <tr>
+            <td><code>Result&lt;T, E&gt;</code></td>
+            <td>成功帶 <code>T</code>，失敗帶 <code>E</code></td>
+            <td>失敗要說明原因</td>
+          </tr>
+          <tr>
+            <td><code>Box&lt;T&gt;</code></td>
+            <td>資料放遠處，這裡留指標</td>
+            <td>大小算不出來時</td>
+          </tr>
+        </tbody>
+      </table>
+
+      <h2>為什麼分這麼細</h2>
+
+      <p>
+        編譯器必須在編譯期知道每個值佔多少空間。這一條推出了整個型別系統的形狀。
+      </p>
+
+      <pre><code>size_of::&lt;[i32; 3]&gt;()   // 12  ← 資料本人就在這
+size_of::&lt;Vec&lt;i32&gt;&gt;()   // 24  ← 指標 + 長度 + 容量
+size_of::&lt;Vec&lt;String&gt;&gt;()// 24  ← 裝什麼都一樣
+size_of::&lt;String&gt;()     // 24  ← 就是 Vec&lt;u8&gt;
+size_of::&lt;&amp;str&gt;()       // 16  ← 指標 + 長度（借的，不會長大）
+size_of::&lt;&amp;i32&gt;()       //  8  ← 純指標</code></pre>
+
+      <p>
+        <code>Vec</code> <em>本身</em>大小固定（永遠 24），<em>內容物</em>數量才可變。這就是它能放進固定槽位又能無限長大的原因。
+      </p>
+
+      <p>
+        算不出大小時編譯器會直接擋：
+      </p>
+
+      <pre><code>error[E0072]: recursive type `List` has infinite size
+help: insert some indirection (e.g., a `Box`, `Rc`, or `&amp;`) to break the cycle</code></pre>
+
+      <h2>常見取捨</h2>
+
+      <table>
+        <thead>
+          <tr>
+            <th>選擇</th>
+            <th>得到</th>
+            <th>付出</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><code>BTreeMap</code> 而非 <code>HashMap</code></td>
+            <td>走訪永遠按鍵有序，不用自己排</td>
+            <td>插入與查詢比 <code>HashMap</code> 慢一些</td>
+          </tr>
+          <tr>
+            <td><code>&amp;[T]</code> 而非 <code>&amp;Vec&lt;T&gt;</code> 當參數</td>
+            <td>陣列和 <code>Vec</code> 都能傳進來</td>
+            <td>拿不到 <code>Vec</code> 專屬方法（如 <code>push</code>）</td>
+          </tr>
+          <tr>
+            <td><code>HashSet</code> 而非 <code>HashMap</code></td>
+            <td>語意清楚，不用假造一個值</td>
+            <td>只知道有沒有，記不了附帶資料</td>
+          </tr>
+        </tbody>
+      </table>
+
+      <div class="callout">
+        慣例：<strong>參數收 <code>&amp;[T]</code>，回傳給 <code>Vec&lt;T&gt;</code>。</strong>收的時候放寬，給的時候給完整所有權。字串版本是「參數收 <code>&amp;str</code>，回傳給 <code>String</code>」。
+      </div>
+
+      <h2>速記片段</h2>
+
+      <pre><code>use std::collections::{BTreeMap, HashMap, HashSet, VecDeque};
+
+// 去重／判斷看過沒
+let mut seen: HashSet&lt;&amp;str&gt; = HashSet::new();
+seen.insert("apple");            // true  ← 第一次
+seen.insert("apple");            // false ← 已存在
+seen.contains("apple");          // true
+
+// 有序的鍵值表（介面同 HashMap）
+let mut b: BTreeMap&lt;String, usize&gt; = BTreeMap::new();
+*b.entry(k).or_insert(0) += 1;
+for (k, v) in &amp;b { }             // 一定按鍵排序
+
+// 兩端進出
+let mut q: VecDeque&lt;&amp;str&gt; = VecDeque::new();
+q.push_back("b");
+q.push_front("a");
+q.pop_front();                   // Some("a")
+
+// 量一個型別多大
+use std::mem::size_of;
+println!("{}", size_of::&lt;Vec&lt;i32&gt;&gt;());</code></pre>
+
+      <p class="source">
+        來源：<a href="https://doc.rust-lang.org/std/collections/index.html" target="_blank">std::collections 模組文件</a>（「Which collection should I use?」一節）、<a href="https://doc.rust-lang.org/book/ch08-00-common-collections.html" target="_blank">TRPL Chapter 8</a>。相關參考卡：<a href="hashmap.html">HashMap</a>、<a href="string-types.html">字串型別</a>、<a href="ownership-and-borrowing.html">所有權與借用</a>、<a href="option-and-result.html">Option 與 Result</a>。
+      </p>
+    </main>
+  </body>
+</html>

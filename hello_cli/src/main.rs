@@ -32,10 +32,7 @@ fn run() -> Result<(), AppError> {
 
     if words_count_only {
         let counts = report.word_counts();
-        let mut pairs: Vec<(&String, &usize)> = counts.iter().collect();
-        pairs.sort();
-
-        for (word, count) in pairs {
+        for (word, count) in counts {
             println!("{} {}", word, count);
         }
 
