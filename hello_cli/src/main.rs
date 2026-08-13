@@ -9,10 +9,12 @@ use report::load_report;
 fn run() -> Result<(), AppError> {
     let mut filename: Option<String> = None;
     let mut count_only: bool = false;
+    let mut words_count_only: bool = false;
 
     for arg in env::args().skip(1) {
         match arg.as_str() {
             "--count-only" => count_only = true,
+            "--words" => words_count_only = true,
             _ if arg.starts_with("-") => return Err(AppError::UnknownFlag(arg)),
             _ => filename = Some(arg),
         }
@@ -27,6 +29,19 @@ fn run() -> Result<(), AppError> {
     };
 
     let mut report = load_report(&filename)?;
+
+    if words_count_only {
+        let counts = report.word_counts();
+        let mut pairs: Vec<(&String, &usize)> = counts.iter().collect();
+        pairs.sort();
+
+        for (word, count) in pairs {
+            println!("{} {}", word, count);
+        }
+
+        return Ok(());
+    }
+
     report.add_title();
 
     println!("{}", report.summary());

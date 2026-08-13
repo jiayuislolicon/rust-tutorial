@@ -1,0 +1,343 @@
+<!doctype html>
+<html lang="zh-Hant">
+  <head>
+    <meta charset="UTF-8" />
+    <title>Lesson 23 · HashMap：統計每個詞出現幾次</title>
+    <link rel="stylesheet" href="../assets/style.css" />
+    <script src="../assets/quiz.js"></script>
+  </head>
+  <body>
+    <main>
+      <div class="kicker">Lesson 0023 · Rust · CLI 工具養成路線</div>
+      <h1>HashMap：統計每個詞出現幾次</h1>
+      <div class="byline">
+        <strong>學習目標：</strong>學會用 <code>HashMap</code> 存「鍵 → 值」的對應，用
+        <code>entry().or_insert()</code> 做計數，並知道 <code>HashMap</code> 沒有順序這件事會怎麼影響你的輸出。
+      </div>
+
+      <h2>1. 為什麼 <code>count_kinds</code> 的做法不夠用</h2>
+
+      <p>
+        <code>count_kinds</code> 回傳 <code>(usize, usize, usize)</code>，三個數字對應三種類型的行。這行得通，因為<strong>你事先就知道有哪三種</strong>。
+      </p>
+
+      <p>
+        現在換一個問題：統計檔案裡每個詞出現幾次。你事先不知道會有哪些詞，也不知道總共有幾種詞。
+      </p>
+
+      <p>
+        這種「鍵事先不知道、要邊跑邊長出來」的統計，需要的是 <code>HashMap</code>。
+      </p>
+
+      <h2>2. <code>HashMap</code> 的基本操作</h2>
+
+      <p>
+        <code>HashMap&lt;K, V&gt;</code> 用來儲存「鍵 → 值」的對應。<code>K</code> 是鍵的型別，<code>V</code> 是值的型別。
+      </p>
+
+      <p>
+        它不在預設引入的範圍內，要自己 <code>use</code>：
+      </p>
+
+      <pre><code>use std::collections::HashMap;
+
+fn main() {
+    let mut counts: HashMap&lt;String, usize&gt; = HashMap::new();
+
+    counts.insert(String::from("apple"), 3);
+    counts.insert(String::from("banana"), 2);
+
+    println!("{:?}", counts.get("apple"));  // Some(3)
+    println!("{:?}", counts.get("durian")); // None
+    println!("{}", counts.len());           // 2
+}</code></pre>
+
+      <ul>
+        <li>
+          <strong><code>.insert(鍵, 值)</code></strong>：寫入。鍵已經存在的話，舊值被蓋掉。
+        </li>
+        <li>
+          <strong><code>.get(&amp;鍵)</code></strong>：讀取，回傳 <code>Option</code>。
+          有就是 <code>Some(值)</code>，沒有就是 <code>None</code>。
+        </li>
+        <li>
+          <strong><code>.len()</code></strong>：目前有幾組對應。
+        </li>
+      </ul>
+
+      <p>
+        注意 <code>.get()</code> 回傳的是 <code>Option</code>，不是值本身。這是必然的 ——
+        鍵可能不存在，而「不存在」需要一個表達方式。這跟你上一課用
+        <code>Option&lt;String&gt;</code> 來存檔名是同一個道理。
+      </p>
+
+      <p>
+        還有一個細節：<code>.get()</code> 給的是<strong>參考</strong>，型別是
+        <code>Option&lt;&amp;V&gt;</code>，因為值的所有權還留在 <code>HashMap</code> 裡面。印出來看不出差別（<code>Some(3)</code>），但要拿它跟其他數值比對時就得寫成
+        <code>Some(&amp;3)</code>。等一下寫測試會用到。
+      </p>
+
+      <div class="callout tip">
+        💡 <strong>對照 TypeScript：</strong>最接近的是 <code>Map&lt;K, V&gt;</code>，
+        <code>set</code> / <code>get</code> / <code>size</code> 一一對應。差別在讀取：TS 的
+        <code>map.get(k)</code> 回傳 <code>V | undefined</code>，你可以直接拿來用；Rust 給你
+        <code>Option&lt;&amp;V&gt;</code>，你必須先處理 <code>None</code> 的情況，才能安全地取出值。
+      </div>
+
+      <h2>3. <code>entry().or_insert()</code>：計數的標準寫法</h2>
+
+      <p>
+        計數會遇到一個尷尬的情況：第一次看到某個詞時，它還不在 <code>HashMap</code> 裡，不能直接加一。用
+        <code>get</code> 寫出來會變成這樣：
+      </p>
+
+      <pre><code>// 這段可以動，但沒有人這樣寫
+match counts.get(word) {
+    Some(n) =&gt; counts.insert(word.to_string(), n + 1),
+    None =&gt; counts.insert(word.to_string(), 1),
+};</code></pre>
+
+      <p>
+        標準寫法是 <code>entry</code>：
+      </p>
+
+      <pre><code>*counts.entry(word.to_string()).or_insert(0) += 1;</code></pre>
+
+      <p>這一行拆開來看：</p>
+
+      <ul>
+        <li>
+          <strong><code>.entry(鍵)</code></strong>：拿到「這個位置」的把手，不管它現在有沒有值。
+        </li>
+        <li>
+          <strong><code>.or_insert(0)</code></strong>：如果位置是空的，就先塞 <code>0</code> 進去。
+          然後不論是原本就有的值還是剛塞的 <code>0</code>，都回傳一個<strong>指向它的可變參考</strong>（<code>&amp;mut usize</code>）。
+        </li>
+        <li>
+          <strong>開頭的 <code>*</code></strong>：解開（dereference）那個可變參考，才能對它<em>裡面的數字</em>做
+          <code>+= 1</code>。少了 <code>*</code>，你是在對參考本身做加法，編譯不過。
+        </li>
+      </ul>
+
+      <p>
+        所以整句話是：「找到這個詞的位置，沒有的話就從 0 開始，然後把它加一。」
+      </p>
+
+      <p>完整的統計函式：</p>
+
+      <pre><code>use std::collections::HashMap;
+
+fn word_counts(content: &amp;str) -&gt; HashMap&lt;String, usize&gt; {
+    let mut counts = HashMap::new();
+
+    for word in content.split_whitespace() {
+        *counts.entry(word.to_string()).or_insert(0) += 1;
+    }
+
+    counts
+}
+
+fn main() {
+    let counts = word_counts("apple banana apple");
+
+    println!("{:?}", counts.get("apple"));  // Some(2)
+    println!("{}", counts.len());           // 2
+}</code></pre>
+
+      <ul>
+        <li>
+          <strong><code>.split_whitespace()</code></strong>：把字串依照空白分隔，切成一個個詞的疊代器。跟
+          <code>lines()</code> 一樣是字串的疊代器來源之一（見<a href="../reference/iterators.html">疊代器速查表</a>）。
+        </li>
+        <li>
+          <strong><code>word.to_string()</code></strong>：<code>split_whitespace()</code> 給的是借來的
+          <code>&amp;str</code>，但 <code>HashMap</code> 需要擁有鍵的所有權，所以複製一份成 <code>String</code>。
+        </li>
+        <li>
+          <code>HashMap::new()</code> 沒寫型別標註。編譯器會從後面的用法自動推斷出它是
+          <code>HashMap&lt;String, usize&gt;</code>。
+        </li>
+      </ul>
+
+      <h2>4. <code>HashMap</code> 沒有順序</h2>
+
+      <p>
+        直接走訪一個 <code>HashMap</code>，出來的順序是<strong>不固定的</strong>。不是插入順序，也不是排序後的順序。同一支程式跑三次，可以得到三種順序：
+      </p>
+
+      <pre><code>["date", "cherry", "apple", "banana", "elderberry"]
+["date", "elderberry", "apple", "banana", "cherry"]
+["elderberry", "apple", "date", "banana", "cherry"]</code></pre>
+
+      <p>
+        這不是 bug。<code>HashMap</code> 的工作是「快速用鍵找值」，順序不在它的職責裡。
+      </p>
+
+      <p>
+        所以如果輸出的結果是要給人看的，就得自己決定順序：先 <code>collect()</code> 成
+        <code>Vec</code>，再排序。
+      </p>
+
+      <pre><code>let mut pairs: Vec&lt;(&amp;String, &amp;usize)&gt; = counts.iter().collect();
+pairs.sort();
+
+for (word, count) in pairs {
+    println!("{} {}", word, count);
+}</code></pre>
+
+      <ul>
+        <li>
+          <strong><code>.iter()</code></strong>：走訪 <code>HashMap</code>，每次產生一組
+          <code>(&amp;鍵, &amp;值)</code> 的 tuple。
+        </li>
+        <li>
+          <strong><code>.sort()</code></strong>：tuple 的排序是先比第一個元素，所以這裡等於按照詞的字母順序排。
+        </li>
+      </ul>
+
+      <hr />
+
+      <div class="quiz" data-mcq data-answer="2">
+        <div class="q">
+          小測驗一：<code>*counts.entry(k).or_insert(0) += 1;</code> 開頭那個
+          <code>*</code> 是在做什麼？
+        </div>
+        <div class="choices">
+          <button>把值複製一份，避免修改到原本的資料</button>
+          <button>解開可變參考，才能改到它指向的數字</button>
+          <button>宣告這是一個指標型別的區域變數</button>
+        </div>
+        <div
+          class="feedback"
+          data-ok="正確！or_insert 回傳的是 &mut usize，一個指向 HashMap 裡那個數字的可變參考。+= 1 要作用在數字上，不是作用在參考上，所以要先用 * 解開。"
+          data-bad="不對喔。or_insert 給你的是 &mut usize（可變參考），不是值本身。* 的作用是解開它，讓 += 1 落在 HashMap 裡真正的那個數字上。"
+        ></div>
+      </div>
+
+      <div class="quiz" data-mcq data-answer="3">
+        <div class="q">
+          小測驗二：直接用 <code>for (k, v) in &amp;counts</code> 印出整個
+          <code>HashMap</code>，順序會是什麼？
+        </div>
+        <div class="choices">
+          <button>按照鍵的字母順序，由小到大</button>
+          <button>按照插入的先後順序，跟寫入時一樣</button>
+          <button>不固定，同一支程式每次跑都可能不同</button>
+        </div>
+        <div
+          class="feedback"
+          data-ok="正確！HashMap 不保證任何順序，連「每次都一樣」都不保證。要穩定的輸出就得自己 collect 成 Vec 再 sort。"
+          data-bad="不對喔。HashMap 專門做的事是用鍵快速找值，它不維護任何順序 —— 既不是字母序，也不是插入序，而且每次執行都可能不同。"
+        ></div>
+      </div>
+
+      <h2>換你動手</h2>
+
+      <div class="callout">
+        <strong>幫 <code>hello_cli</code> 加上 <code>--words</code>：</strong>
+        <ol>
+          <li>
+            在 <code>hello_cli/</code> 底下新增一個測試檔 <code>words.txt</code>，內容兩行：
+            <code>apple banana apple</code> 和 <code>cherry banana apple</code>。
+          </li>
+          <li>
+            在 <code>report.rs</code> 最上面加 <code>use std::collections::HashMap;</code>，
+            並在 <code>impl Report</code> 裡加一個方法
+            <code>pub fn word_counts(&amp;self) -&gt; HashMap&lt;String, usize&gt;</code>，
+            用 <code>split_whitespace()</code> 加 <code>entry().or_insert(0)</code> 實作。
+          </li>
+          <li>
+            在 <code>mod tests</code> 裡加第五個測試：用
+            <code>Report::new("test.txt", "code code // comment".to_string())</code>，
+            確認 <code>counts.get("code")</code> 是 <code>Some(&amp;2)</code>、
+            <code>counts.get("nothing")</code> 是 <code>None</code>、<code>counts.len()</code> 是
+            <code>3</code>。（<code>get</code> 回傳的是<em>參考</em>，所以是
+            <code>Some(&amp;2)</code> 不是 <code>Some(2)</code>。）
+          </li>
+          <li>
+            在 <code>main.rs</code> 加一個 <code>--words</code> 旗標（跟上一課的
+            <code>--count-only</code> 同一個 <code>match</code> 裡多一行）。
+          </li>
+          <li>
+            旗標開啟時，把 <code>word_counts()</code> 的結果 <code>collect</code> 成
+            <code>Vec</code>、<code>sort()</code>、逐行印出，然後
+            <code>return Ok(());</code>。<code>--words</code> 是獨立模式，印完就結束。
+          </li>
+        </ol>
+      </div>
+
+      <div class="callout tip">
+        💡 <strong>位置很重要：</strong>這段要放在 <code>report.add_title()</code>
+        <em>之前</em>。<code>add_title</code> 會把 <code>=== 檔名 ===</code> 插進
+        <code>content</code>，在它之後統計的話，標題裡的字會被算成詞。
+      </div>
+
+      <p>
+        <strong>驗證條件：</strong><code>cargo test</code> 五個測試全過，然後：
+      </p>
+
+      <table>
+        <thead>
+          <tr>
+            <th>指令</th>
+            <th>預期</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><code>cargo run -- --words words.txt</code></td>
+            <td><code>apple 3</code> / <code>banana 2</code> / <code>cherry 1</code>，就是這個順序</td>
+          </tr>
+          <tr>
+            <td>同一個指令再跑幾次</td>
+            <td>順序每次都一樣（因為你排序了）</td>
+          </tr>
+          <tr>
+            <td><code>cargo run -- notes.txt</code></td>
+            <td>跟以前一模一樣，沒被影響</td>
+          </tr>
+          <tr>
+            <td><code>cargo run -- --count-only notes.txt</code></td>
+            <td>也跟以前一樣</td>
+          </tr>
+        </tbody>
+      </table>
+
+      <div class="win">
+        <div class="kicker">這一課的成果</div>
+        你手上多了 Rust 最常用的第二種集合。<code>Vec</code> 管「一串東西」，<code>HashMap</code>
+        管「用鍵查值」，日常寫程式幾乎都在這兩個之間打轉。<br /><br />
+        而且 <code>hello_cli</code> 現在會做一件它本來做不到的事：統計事先不知道有哪些種類的項目。<br /><br />
+        速查表：<a href="../reference/hashmap.html">HashMap 參考卡</a>。
+      </div>
+
+      <p class="source">
+        主要參考資料：<a
+          href="https://doc.rust-lang.org/book/ch08-03-hash-maps.html"
+          target="_blank"
+          >The Rust Programming Language — Chapter 8.3: Storing Keys with Associated Values in Hash Maps</a
+        >
+        （繁中版：<a
+          href="https://rust-lang.tw/book-tw/ch08-03-hash-maps.html"
+          target="_blank"
+          >rust-lang.tw</a
+        >）。<code>entry</code> 的完整說明在
+        <a
+          href="https://doc.rust-lang.org/std/collections/struct.HashMap.html#method.entry"
+          target="_blank"
+          >std 文件</a
+        >。
+      </p>
+
+      <nav class="lesson-links">
+        <a href="0022-command-line-flags.html">&larr; 上一課：命令列選項 解析 flag</a>
+        <a href="#">下一課：待訂 &rarr;</a>
+      </nav>
+
+      <p class="ask-agent">
+        卡住了、或有任何看不懂的地方，直接問我（你的 AI 教學助手）就好 ——
+        隨時可以打斷這個流程提問。
+      </p>
+    </main>
+  </body>
+</html>

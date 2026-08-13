@@ -187,3 +187,15 @@ Iterator adapter that discards the first `n` elements. Lazy, like `.filter()`. `
 
 **Flag（選項）**:
 A command-line argument that names itself rather than relying on its position, e.g. `--count-only`. Parsing by content instead of by index is what lets `tool --count-only f.txt` and `tool f.txt --count-only` behave identically. An unrecognised flag should be a returned `Err`, not a printed hint — otherwise the user believes it took effect.
+
+**`HashMap<K, V>`**:
+A key-to-value collection from `std::collections` (not in the prelude — needs an explicit `use`). `.insert(k, v)` writes and overwrites, `.get(&k)` returns `Option<&V>` (a *reference*, so it compares as `Some(&2)`), `.len()` counts entries. Closest TypeScript equivalent is `Map<K, V>`; the difference is that `get` hands back an `Option` rather than a directly usable `V | undefined`. See [[`Option`]].
+
+**`.entry(k).or_insert(v)`**:
+The idiomatic way to count with a `HashMap`. `.entry(k)` grabs the slot for a key whether or not it holds anything; `.or_insert(v)` fills it with `v` when empty and returns `&mut V` either way. Hence `*counts.entry(k).or_insert(0) += 1;` — the leading `*` dereferences that mutable reference so the `+= 1` lands on the number rather than on the reference.
+
+**HashMap iteration order**:
+Unspecified. Not insertion order, not sorted order, and not even stable between runs of the same program — this is by design, since a hash map's job is key lookup. For human-facing output, `collect()` into a `Vec` and `sort()` it, or use `BTreeMap`, which iterates in key order.
+
+**`.split_whitespace()`**:
+Splits a `&str` into an iterator of words on any whitespace run. One of the string-specific iterator sources alongside `.lines()` and `.chars()`. Yields borrowed `&str`s, so storing them as `HashMap` keys needs `.to_string()`. See [[Iterator（疊代器）]].

@@ -1,0 +1,124 @@
+<!doctype html>
+<html lang="zh-Hant">
+  <head>
+    <meta charset="UTF-8" />
+    <title>Reference · HashMap</title>
+    <link rel="stylesheet" href="../assets/style.css" />
+  </head>
+  <body>
+    <main>
+      <div class="kicker">Reference · 速查表</div>
+      <h1>HashMap：鍵 → 值</h1>
+
+      <pre><code>use std::collections::HashMap;   // 不在預設引入範圍，要自己 use</code></pre>
+
+      <h2>常用操作</h2>
+      <table>
+        <thead>
+          <tr>
+            <th>寫法</th>
+            <th>作用</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><code>HashMap::new()</code></td>
+            <td>建立空的 map，型別通常由後續用法推斷出來。</td>
+          </tr>
+          <tr>
+            <td><code>.insert(k, v)</code></td>
+            <td>寫入。鍵已存在就覆蓋舊值。</td>
+          </tr>
+          <tr>
+            <td><code>.get(&amp;k)</code></td>
+            <td>
+              讀取，回傳 <code>Option&lt;&amp;V&gt;</code>。注意是<strong>參考</strong>：
+              <code>assert_eq!(m.get("a"), Some(&amp;2))</code>。
+            </td>
+          </tr>
+          <tr>
+            <td><code>.len()</code></td>
+            <td>有幾組對應。</td>
+          </tr>
+          <tr>
+            <td><code>.iter()</code></td>
+            <td>逐一給出 <code>(&amp;K, &amp;V)</code> 的 tuple。順序不固定。</td>
+          </tr>
+        </tbody>
+      </table>
+
+      <h2>計數：<code>entry().or_insert()</code></h2>
+      <pre><code>let mut counts: HashMap&lt;String, usize&gt; = HashMap::new();
+
+for word in content.split_whitespace() {
+    *counts.entry(word.to_string()).or_insert(0) += 1;
+}</code></pre>
+      <table>
+        <thead>
+          <tr>
+            <th>部分</th>
+            <th>作用</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><code>.entry(k)</code></td>
+            <td>拿到「這個鍵的位置」的把手，不管它現在有沒有值。</td>
+          </tr>
+          <tr>
+            <td><code>.or_insert(0)</code></td>
+            <td>
+              空的就先塞 <code>0</code>，然後回傳指向該值的可變參考
+              <code>&amp;mut V</code>。
+            </td>
+          </tr>
+          <tr>
+            <td>開頭的 <code>*</code></td>
+            <td>
+              解開那個可變參考，讓 <code>+= 1</code> 落在數字上而不是參考上。少了它編譯不過。
+            </td>
+          </tr>
+        </tbody>
+      </table>
+
+      <h2>順序：沒有</h2>
+      <p>
+        <code>HashMap</code> 不保證任何走訪順序 —— 不是插入序，不是字母序，而且同一支程式每次執行都可能不同。要穩定輸出就自己排：
+      </p>
+      <pre><code>let mut pairs: Vec&lt;(&amp;String, &amp;usize)&gt; = counts.iter().collect();
+pairs.sort();   // tuple 先比第一個元素，等於按鍵排序
+
+for (word, count) in pairs {
+    println!("{} {}", word, count);
+}</code></pre>
+      <p>
+        需要「永遠照鍵排好」的話，標準庫另有
+        <a
+          href="https://doc.rust-lang.org/std/collections/struct.BTreeMap.html"
+          target="_blank"
+          ><code>BTreeMap</code></a
+        >，介面幾乎一樣但走訪是有序的。
+      </p>
+
+      <div class="callout tip">
+        對照 TypeScript：最接近 <code>Map&lt;K, V&gt;</code>（<code>set</code> /
+        <code>get</code> / <code>size</code>）。差別在 <code>get</code> —— TS 給
+        <code>V | undefined</code> 可以直接用，Rust 給 <code>Option&lt;&amp;V&gt;</code>，要先處理「沒有」的情況。
+      </div>
+
+      <p class="source">
+        來源：<a
+          href="https://doc.rust-lang.org/book/ch08-03-hash-maps.html"
+          target="_blank"
+          >The Rust Book — 8.3 Hash Maps</a
+        >、<a
+          href="https://doc.rust-lang.org/std/collections/struct.HashMap.html"
+          target="_blank"
+          >std::collections::HashMap</a
+        >。 對應課程：<a href="../lessons/0023-hashmap.html"
+          >Lesson 23 · HashMap：統計每個詞出現幾次</a
+        >。
+      </p>
+    </main>
+  </body>
+</html>

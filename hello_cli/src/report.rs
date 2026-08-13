@@ -1,4 +1,5 @@
 use crate::errors::AppError;
+use std::collections::HashMap;
 use std::fs;
 
 pub struct Report {
@@ -64,6 +65,16 @@ impl Report {
 
         (empty_counts, comment_counts, code_counts)
     }
+
+    pub fn word_counts(&self) -> HashMap<String, usize> {
+        let mut counts = HashMap::new();
+
+        for word in self.content.split_whitespace() {
+            *counts.entry(word.to_string()).or_insert(0) += 1;
+        }
+
+        return counts;
+    }
 }
 
 pub fn load_report(filename: &str) -> Result<Report, AppError> {
@@ -103,5 +114,15 @@ mod tests {
         let counts = report.count_kinds();
 
         assert_eq!(counts, (1, 1, 1));
+    }
+
+    #[test]
+    fn word_counts() {
+        let report = Report::new("test.txt", "code code // comment".to_string());
+        let counts_map = report.word_counts();
+
+        assert_eq!(counts_map.get("code"), Some(&2));
+        assert_eq!(counts_map.get("nothing"), None);
+        assert_eq!(counts_map.len(), 3);
     }
 }
