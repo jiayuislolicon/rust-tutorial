@@ -1,0 +1,623 @@
+<!doctype html>
+<html lang="zh-Hant">
+  <head>
+    <meta charset="UTF-8" />
+    <title>Lesson 26 · 讓旗標帶一個值：--min 3</title>
+    <link rel="stylesheet" href="../assets/style.css" />
+    <script src="../assets/quiz.js"></script>
+  </head>
+  <body>
+    <main>
+      <div class="kicker">Lesson 0026 · Rust · CLI 工具養成路線</div>
+      <h1>讓旗標帶一個值：<code>--min 3</code></h1>
+      <div class="byline">
+        <strong>學習目標：</strong>把寫死在程式裡的
+        <code>min</code> 變成可以從命令列彈性輸入。過程中你會學到如何運用
+        <code>while let</code> 與 <code>parse</code>，並為
+        <code>AppError</code> 新增兩個錯誤變體。這是一堂 <em>實作課</em> ——
+        我們要把前兩課（型別地圖、閉包）學到的心法，真正裝進你的
+        <code>hello_cli</code> 裡。
+      </div>
+
+      <h2>1. 你會卡在哪：門檻寫死在原始碼裡</h2>
+
+      <p>上一課結束時，你的 <code>main.rs</code> 裡藏著這麼一行：</p>
+
+      <pre><code>let min = 2;</code></pre>
+
+      <p>
+        這代表「只列出出現至少 2
+        次的單字」。但如果你今天想分析一份長篇報告，覺得 2 次太寬鬆，想改成 5
+        次呢？
+      </p>
+
+      <p>
+        目前的你只能這麼做：打開 <code>main.rs</code>、改掉數字、存檔、重新
+        <code>cargo build</code>、然後再跑一次。 如果想改回
+        2，還得把這套流程重來一遍。
+      </p>
+
+      <p>
+        <strong
+          >這太不科學了！你要的應該是：<code
+            >cargo run -- --words --min 5 words.txt</code
+          >。</strong
+        >不用改程式碼，也不用重新編譯。
+      </p>
+
+      <p>
+        然而，你目前的旗標迴圈還辦不到這件事。它現在只認得「開關型」的旗標 ——
+        看到 <code>--count-only</code> 就設為 <code>true</code>，沒看到就是
+        <code>false</code>。但
+        <code>--min</code> 的性質完全不同：它本身只是一個標籤，
+        <strong>真正的數值資訊，藏在它後面的那個參數裡</strong>。
+      </p>
+
+      <h2>2. 為什麼不能只多加一個 match 分支</h2>
+
+      <p>你可能會想，那就依樣畫葫蘆，加個 <code>match</code> 分支不就好了？</p>
+
+      <pre><code>"--min" =&gt; min = 2,   // 這行是錯的，等一下就會看到為什麼</code></pre>
+
+      <p>
+        先撇開這裡還是寫死 2 不談。真正的致命傷是：<strong
+          >你並沒有把 <code>--min</code> 後面跟著的那個
+          <code>5</code> 給處理掉。</strong
+        >當迴圈跑到下一圈時，它會抓到 <code>"5"</code>，因為它不是以
+        <code>-</code> 開頭， 就會掉進最後一個分支，被程式誤認為是「檔案名稱」。
+      </p>
+
+      <p>實測這個版本，你會發現參數的順序居然會決定程式的生死：</p>
+
+      <table>
+        <thead>
+          <tr>
+            <th>指令</th>
+            <th>實際輸出</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><code>cargo run -- --words --min 2 words.txt</code></td>
+            <td>正常印出結果</td>
+          </tr>
+          <tr>
+            <td><code>cargo run -- --words words.txt --min 2</code></td>
+            <td>
+              <code>讀不到檔案：No such file or directory (os error 2)</code>
+            </td>
+          </tr>
+        </tbody>
+      </table>
+
+      <p>
+        為什麼會這樣？差別就在於「誰在後面」。 在第一種寫法裡，<code>2</code>
+        先被誤認為檔名存進了 <code>filename</code>， 但隨後出現的
+        <code>words.txt</code>
+        又把它覆蓋掉了，所以程式看起來安然無恙。但在第二種寫法裡，<code>2</code>
+        是最後一個參數， 它覆蓋了原本正確的
+        <code>words.txt</code>，於是程式傻傻地跑去找一個叫做
+        <code>2</code> 的檔案，最後當然會報錯。
+      </p>
+
+      <div class="callout tip">
+        💡
+        <strong>這種 Bug 其實比編譯錯誤更可怕。</strong
+        >編譯錯誤會直接擋下你，但這種邏輯錯誤不會 ——
+        它會讓你的工具在某些參數順序下看似正常，
+        換個順序卻又突然崩潰。因此，正確地「把後面的值吃掉」絕對不是程式碼風格的問題，而是生死攸關的正確性問題。
+      </div>
+
+      <h2>3. <code>for</code> 迴圈不會把 iterator 交給你</h2>
+
+      <p>
+        既然關鍵在於要「吃掉下一個參數」，那我們就在迴圈裡手動多呼叫一次
+        <code>next()</code> 試試看：
+      </p>
+
+      <pre><code>let mut args = env::args().skip(1);
+
+for arg in args {
+    if arg == "--min" {
+        let value = args.next();   // 想再拿一個
+        println!("{:?}", value);
+    }
+}</code></pre>
+
+      <p>
+        結果編譯器無情地拒絕了，並丟出
+        <code>borrow of moved value: args</code>：
+      </p>
+
+      <pre><code>error[E0382]: borrow of moved value: `args`
+  |
+4 |     let mut args = env::args().skip(1);
+  |         -------- move occurs because `args` has type `Skip&lt;Args&gt;`,
+  |                  which does not implement the `Copy` trait
+7 |     for arg in args {
+  |                ---- `args` moved due to this implicit call to `.into_iter()`
+9 |             let value = args.next();
+  |                         ^^^^ value borrowed here after move
+  |
+  = note: a for loop advances the iterator for you, the result is stored in `arg`
+help: if you want to call `next` on a iterator within the loop, consider using `while let`
+  |
+7 -     for arg in args {
+7 +     while let Some(arg) = args.next() {</code></pre>
+
+      <p>這段錯誤訊息非常豐富，裡面藏著三個獨立的情報，我們來逐一拆解：</p>
+
+      <ul>
+        <li>
+          <strong><code>a for loop advances the iterator for you</code></strong
+          >：<code>for</code> 迴圈在底層其實就是默默地在幫你呼叫
+          <code>next()</code>，每一圈叫一次，然後把結果塞進
+          <code>arg</code> 裡。 它只是把這個動作封裝起來，不讓你看見。
+        </li>
+        <li>
+          <strong
+            ><code
+              >args moved due to this implicit call to .into_iter()</code
+            ></strong
+          >：這才是痛點！<code>for</code> 迴圈會直接把 iterator
+          的「所有權」整個端走（還記得 Lesson 10 的
+          <code>move</code> 嗎？）。所以一旦進了迴圈，<code>args</code>
+          就不再歸你管了，你當然不能在裡面對它呼叫 <code>next()</code>。
+        </li>
+        <li>
+          <strong><code>consider using while let</code></strong
+          >：編譯器超貼心，直接把正確的語法跟改法都寫給你了。
+        </li>
+      </ul>
+
+      <p>
+        總結來說，<code>for</code>
+        迴圈就像是自動導航，適合「你不需要自己控制節奏」的場景。但如果你需要在某些特定回合「手動多踩一腳油門」（多吃一個參數），
+        你就必須把方向盤（iterator）緊緊握在自己手上。
+      </p>
+
+      <h2>4. <code>while let</code>：你已經會的語法</h2>
+
+      <p>
+        <code>while let</code> 看起來是個生面孔，但其實你在 Lesson 9
+        就已經學過它的雙胞胎兄弟了。我們來對照一下：
+      </p>
+
+      <div class="compare">
+        <h3>你已經會的 <code>if let</code></h3>
+        <p>解構一次。是 <code>Some</code> 就進去，不是就跳過。</p>
+        <pre><code>if let Some(arg) = args.next() {
+    // 用 arg
+}</code></pre>
+      </div>
+
+      <div class="compare">
+        <h3>這一課的 <code>while let</code></h3>
+        <p>
+          一直解構。每圈都叫一次 <code>next()</code>，直到配不上
+          <code>Some</code> 為止。
+        </p>
+        <pre><code>while let Some(arg) = args.next() {
+    // 用 arg
+}</code></pre>
+      </div>
+
+      <p>
+        <code>args.next()</code> 回傳的是
+        <code>Option&lt;String&gt;</code>。當參數都被拿光時，它會回傳
+        <code>None</code>。這時
+        <code>Some(arg)</code>
+        這個模式（Pattern）就配對失敗了，迴圈便會優雅地結束。
+        <strong
+          >在這裡，迴圈的結束條件不再是死板的計數器，而是「模式配對不上」。</strong
+        >
+      </p>
+
+      <p>
+        最關鍵的差別在於：現在
+        <code>args</code>
+        的所有權還在你手上！因此，你完全可以在迴圈本體裡再呼叫一次
+        <code>args.next()</code
+        >，主動吃掉下一個參數。而當迴圈進入下一圈時，就會自動從「再下一個」參數繼續開始。
+      </p>
+
+      <h2>5. 拿到的是 <code>String</code>，你要的是 <code>usize</code></h2>
+
+      <p>
+        要記住一個大原則：<strong>命令列傳進來的參數，永遠都是文字。</strong>
+        所以 <code>--min 5</code> 給你的是 <code>"5"</code> 這個
+        <code>String</code>，而不是數字
+        <code>5</code>。要想比大小，我們得先把它轉成數字：
+      </p>
+
+      <pre><code>let n: usize = value.parse()?;</code></pre>
+
+      <p>
+        但 <code>parse</code> 是有可能失敗的 —— 天知道使用者會不會手滑打成
+        <code>--min abc</code>。因此，它回傳的是
+        <code>Result&lt;usize, ParseIntError&gt;</code>，而不是單純的
+        <code>usize</code>。
+      </p>
+
+      <p>
+        既然看到了 <code>Result</code>，你的老朋友
+        <code>?</code>（問號運算子，Lesson
+        17）就該上場了。但如果你直接加上去，編譯器又會擋下你：
+      </p>
+
+      <pre><code>error[E0277]: `?` couldn't convert the error to `AppError`
+   |
+ 9 | fn run() -&gt; Result&lt;(), AppError&gt; {
+   |             -------------------- expected `AppError` because of this
+22 |                 Some(value) =&gt; min = value.parse()?,
+   |                                            -------^ the trait `From&lt;ParseIntError&gt;`
+   |                                                     is not implemented for `AppError`
+   |
+   = note: the question mark operation (`?`) implicitly performs a conversion
+           on the error value using the `From` trait
+help: the trait `From&lt;ParseIntError&gt;` is not implemented for `AppError`
+      but trait `From&lt;std::io::Error&gt;` is implemented for it</code></pre>
+
+      <p>
+        這其實是 Lesson 17 那套錯誤處理機制的重播。<code>?</code>
+        在把錯誤往外丟之前，會試圖用
+        <code>From</code>
+        特徵（Trait）把它轉換成函式簽名上宣告的錯誤型別（也就是
+        <code>AppError</code>）。但目前 <code>ParseIntError</code> 還沒有通往
+        <code>AppError</code> 的橋樑，所以編譯器不知道該怎麼轉。
+      </p>
+
+      <p>
+        錯誤訊息的最後一行特別值得留意：<code
+          >but trait From&lt;std::io::Error&gt; is implemented for it</code
+        >。 編譯器在溫柔地提醒你：「嘿，你之前為了
+        <code>fs::read_to_string</code> 已經寫過一個類似的轉換橋樑囉！」
+        我們只要照著那個形狀，再搭一座橋就好了。
+      </p>
+
+      <h2>6. 兩種失敗，兩個變體</h2>
+
+      <p>
+        針對
+        <code>--min</code>
+        這個旗標，使用者可能會犯兩種不同的錯。這兩種錯值得我們分開處理，因為我們需要給出不同的錯誤提示：
+      </p>
+
+      <table>
+        <thead>
+          <tr>
+            <th>使用者打了什麼</th>
+            <th>哪裡出問題</th>
+            <th>新變體</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><code>--min abc</code></td>
+            <td>值拿得到，但不是數字</td>
+            <td><code>BadNumber(ParseIntError)</code></td>
+          </tr>
+          <tr>
+            <td><code>--words words.txt --min</code></td>
+            <td><code>--min</code> 是最後一個參數，根本沒有值</td>
+            <td><code>MissingValue(String)</code></td>
+          </tr>
+        </tbody>
+      </table>
+
+      <p>
+        第二種錯誤（少給數字），從型別上就能一眼看穿：因為
+        <code>args.next()</code> 回傳的是 <code>Option</code>，而
+        <code>None</code> 就是你必須面對的分支。<strong
+          >在 Rust 裡，你絕對不會忘記處理它，因為
+          <code>match</code> 的「窮盡性檢查（Exhaustiveness
+          Check）」會死死盯著你，不准你漏掉任何一種可能。</strong
+        >
+      </p>
+
+      <h2>7. 完整的改動</h2>
+
+      <p>
+        在 <code>errors.rs</code> 加兩個變體、兩個
+        <code>Display</code> 分支、一個 <code>From</code>：
+      </p>
+
+      <pre><code>pub enum AppError {
+    ReadFailed(std::io::Error),
+    Empty,
+    UnknownFlag(String),
+    MissingValue(String),
+    BadNumber(std::num::ParseIntError),
+}</code></pre>
+
+      <pre><code>            AppError::MissingValue(flag) =&gt; write!(f, "{} 後面少了一個數字", flag),
+            AppError::BadNumber(e) =&gt; write!(f, "數字格式錯誤：{}", e),</code></pre>
+
+      <pre><code>impl From&lt;std::num::ParseIntError&gt; for AppError {
+    fn from(e: std::num::ParseIntError) -&gt; AppError {
+        AppError::BadNumber(e)
+    }
+}</code></pre>
+
+      <p><code>main.rs</code> 的旗標迴圈：</p>
+
+      <div class="compare compare-before">
+        <h3>🔴 重構前</h3>
+        <p><code>for</code> 拿走了 iterator，你沒有辦法在迴圈裡多走一步。</p>
+        <pre><code>for arg in env::args().skip(1) {
+    match arg.as_str() {
+        "--count-only" =&gt; count_only = true,
+        "--words" =&gt; words_count_only = true,
+        _ if arg.starts_with("-") =&gt; return Err(AppError::UnknownFlag(arg)),
+        _ =&gt; filename = Some(arg),
+    }
+}</code></pre>
+      </div>
+
+      <div class="compare compare-after">
+        <h3>🟢 重構後</h3>
+        <p>
+          iterator 在 <code>args</code> 手上，<code>--min</code>
+          分支可以自己再吃一個參數。
+        </p>
+        <pre><code>let mut min: usize = 1;
+
+let mut args = env::args().skip(1);
+
+while let Some(arg) = args.next() {
+    match arg.as_str() {
+        "--count-only" =&gt; count_only = true,
+        "--words" =&gt; words_count_only = true,
+        "--min" =&gt; match args.next() {
+            Some(value) =&gt; min = value.parse()?,
+            None =&gt; return Err(AppError::MissingValue("--min".to_string())),
+        },
+        _ if arg.starts_with("-") =&gt; return Err(AppError::UnknownFlag(arg)),
+        _ =&gt; filename = Some(arg),
+    }
+}</code></pre>
+      </div>
+
+      <p>
+        最後，別忘了把 <code>--words</code> 區塊裡原本寫死的
+        <code>let min = 2;</code> 刪掉。現在這個門檻值已經交由迴圈來動態設定了。
+      </p>
+
+      <div class="callout tip">
+        💡 <strong>為什麼預設值要改成 1，而不是 2？</strong> 因為
+        <code>min = 1</code> 代表「不過濾」（只要出現過的字，至少都會出現 1
+        次）。 當使用者沒有特別指定
+        <code>--min</code> 時，顯示全部結果，這才是比較符合直覺的預設行為。
+      </div>
+
+      <div class="callout">
+        💡
+        <strong>關於 <code>let mut min: usize = 1;</code> 的小秘密：</strong>
+        其實 <code>: usize</code> 這個型別標註是可以省略的。
+        因為在後面的程式碼中，我們寫了 <code>*pair.1 &gt;= min</code>，拿它跟
+        <code>&amp;usize</code> 去比大小，這時它的型別就已經被編譯器「釘死」了。
+        寫出來只是為了體貼讀程式碼的人 ——
+        變數宣告和函式簽名，永遠是人類確認型別最快的地方。
+      </div>
+
+      <h2>8. 回頭看看上一課的閉包</h2>
+
+      <p>
+        在
+        <code>--words</code>
+        區塊中，有一行程式碼我們連碰都沒碰，但它的意義卻已經昇華了：
+      </p>
+
+      <pre><code>pairs.retain(|pair| *pair.1 &gt;= min);</code></pre>
+
+      <p>
+        在以前，<code>min</code> 是寫死的
+        <code>2</code
+        >，編譯器在編譯時就對它瞭若指掌。但現在，它是使用者在命令列上臨時輸入的數字，
+        <strong>在編譯階段，這個數字根本還不存在！</strong>
+      </p>
+
+      <p>
+        這完美呼應了 Lesson 25 中那個
+        <code>can't capture dynamic environment in a fn item</code>
+        的錯誤。一般的
+        <code>fn</code> 函式就像密室，看不到外面的變數，所以它根本無從得知
+        <code>min</code> 到底是多少。 但閉包可以，因為它把
+        <code>min</code> 裝進百寶袋，一起帶著走了。
+      </p>
+
+      <p>
+        在上一課，這可能只是編譯器的一句囉嗦限制；但在這一課，它卻成為了你的工具「能不能動態接受使用者輸入」的關鍵分水嶺。
+      </p>
+
+      <h2>9. 練習一：把三種失敗都跑一次</h2>
+
+      <p>
+        照著第 7
+        節做完改動後，請把下面每一行指令都跑過一次，確認輸出跟表格一致。
+      </p>
+
+      <table>
+        <thead>
+          <tr>
+            <th>指令</th>
+            <th>預期輸出</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><code>cargo run -- --words words.txt</code></td>
+            <td>
+              <code>apple: 3</code> / <code>banana: 2</code> /
+              <code>cherry: 1</code>
+            </td>
+          </tr>
+          <tr>
+            <td><code>cargo run -- --words --min 2 words.txt</code></td>
+            <td><code>apple: 3</code> / <code>banana: 2</code></td>
+          </tr>
+          <tr>
+            <td><code>cargo run -- --min 3 --words words.txt</code></td>
+            <td><code>apple: 3</code></td>
+          </tr>
+          <tr>
+            <td><code>cargo run -- --words --min abc words.txt</code></td>
+            <td><code>數字格式錯誤：invalid digit found in string</code></td>
+          </tr>
+          <tr>
+            <td><code>cargo run -- --words words.txt --min</code></td>
+            <td><code>--min 後面少了一個數字</code></td>
+          </tr>
+          <tr>
+            <td><code>cargo test</code></td>
+            <td>5 個測試全過，一個字都不用改</td>
+          </tr>
+        </tbody>
+      </table>
+
+      <div class="callout tip">
+        💡 <strong>第 3 行是重點。</strong><code>--min 3</code> 放在
+        <code>--words</code> 前面也能正常運作，因為值被
+        <code>args.next()</code> 吃掉了，不會漏到檔名那一格。 這正是第 2 節那個
+        bug 被修好的最佳證據。
+      </div>
+
+      <h2>10. 練習二：讓編譯器再示範一次窮盡性</h2>
+
+      <p>
+        這一題不用寫新功能，只是要驗證一個你已經聽過、但可能還沒親眼看過的規則。
+      </p>
+
+      <ol>
+        <li>
+          在 <code>errors.rs</code> 的
+          <code>AppError</code> 裡再加一個變體，例如
+          <code>TooManyFiles</code>。先<strong>不要</strong>動
+          <code>Display</code>。
+        </li>
+        <li><code>cargo build</code>。預測一下：會過嗎？</li>
+        <li>
+          讀編譯器的訊息。它會說
+          <code>non-exhaustive patterns</code
+          >，並且精準指出是哪一個變體沒被涵蓋到。
+        </li>
+        <li>把這個變體刪掉，回到原本的狀態。</li>
+      </ol>
+
+      <p>
+        重點不是這個變體本身，而是這件事：<strong
+          >enum 只要加了一個變體，所有沒處理它的
+          <code>match</code> 都會直接編譯失敗。</strong
+        >如果你在 TypeScript 裡加一個 union
+        成員，只有開了嚴格設定、而且回傳型別剛好夠窄的地方才會被抓到。 但在 Rust
+        裡，這是語言層面給你的鐵壁保證。
+      </p>
+
+      <h2>11. 檢查你記得多少</h2>
+
+      <div class="quiz" data-mcq data-answer="3">
+        <div class="q">
+          把 <code>for arg in args</code> 改成
+          <code>while let Some(arg) = args.next()</code>，換來的是什麼好處？
+        </div>
+        <div class="choices">
+          <button>迴圈跑得比較快，因為少了一層包裝</button>
+          <button>參數的順序可以任意調換不出錯</button>
+          <button>迴圈本體裡還能自己再叫一次 next</button>
+          <button>參數型別從 String 變成 &amp;str 省記憶體</button>
+        </div>
+        <div
+          class="feedback"
+          data-ok="答對了！for 迴圈會用 into_iter 把 iterator 的所有權拿走，所以迴圈裡的 args 已經不能用了。while let 把 next() 的呼叫權交還到你手上，你就能在需要的那一圈手動多吃一個參數。"
+          data-bad="再想一次。錯誤訊息說的是 args moved due to this implicit call to .into_iter() —— 問題不在速度或型別，在於 for 把 iterator 的所有權拿走了。"
+        ></div>
+      </div>
+
+      <div class="quiz" data-mcq data-answer="2">
+        <div class="q">
+          遇到 <code>value.parse()?</code> 這行，編譯器說
+          <code
+            >the trait From&lt;ParseIntError&gt; is not implemented for
+            AppError</code
+          >。該補什麼？
+        </div>
+        <div class="choices">
+          <button>把 run 的回傳型別改成 Result&lt;(), ParseIntError&gt;</button>
+          <button>替 AppError 寫一個 From&lt;ParseIntError&gt; 實作</button>
+          <button>把問號拿掉改用 unwrap 讓它直接停下來</button>
+          <button>在 parse 後面補上 usize 的型別標註即可</button>
+        </div>
+        <div
+          class="feedback"
+          data-ok="答對了！在丟出錯誤前會用 From 轉成簽名上的錯誤型別。你之前已經替 std::io::Error 寫過一個同樣形狀的轉換實作了，照著搭一座橋就好。"
+          data-bad="再看一次訊息裡的 note：the question mark operation implicitly performs a conversion using the From trait。缺的是那條轉換的路（From 特徵），而不是型別標註。"
+        ></div>
+      </div>
+
+      <div class="quiz" data-mcq data-answer="1">
+        <div class="q">
+          <code>--min</code> 分支裡的 <code>args.next()</code> 回傳
+          <code>None</code> 代表什麼意思？
+        </div>
+        <div class="choices">
+          <button>命令列上 --min 後面沒有東西了</button>
+          <button>命令列上 --min 後面接的不是數字</button>
+          <button>命令列上 --min 這個旗標重複出現了</button>
+          <button>命令列上 --min 的值超出了 usize 範圍</button>
+        </div>
+        <div
+          class="feedback"
+          data-ok="答對了！None 表示參數已經被拿光了，也就是 --min 是最後一個參數。「不是數字」是另一種錯誤，由 parse 回傳的 Result 負責處理。"
+          data-bad="分清楚兩層：next() 回答的是「還有沒有下一個參數」，parse() 回答的是「那個參數是不是數字」。None 屬於前者。"
+        ></div>
+      </div>
+
+      <div class="win">
+        <div class="kicker">這一課的成果</div>
+        你的工具現在學會接一個<strong>帶值的旗標</strong>了。這是真實 CLI
+        工具最常見的參數形式 ——
+        <code>grep -m 3</code>、<code>head -n 20</code>、<code
+          >curl -o file</code
+        >
+        全都是這個形狀。<br /><br />
+        在實作的路上，你也收穫了三個可以帶走的核心觀念：<code>for</code>
+        迴圈會拿走 iterator 的所有權、<code>?</code> 靠
+        <code>From</code> 轉換錯誤、以及命令列給你的永遠是文字。<br /><br />
+        速查表：<a href="../reference/command-line-flags.html">命令列旗標速查</a
+        >、<a href="../reference/error-handling-and-custom-errors.html"
+          >自訂錯誤速查</a
+        >。
+      </div>
+
+      <p class="source">
+        主要參考資料：<a
+          href="https://doc.rust-lang.org/book/ch12-01-accepting-command-line-arguments.html"
+          target="_blank"
+          >The Rust Programming Language — Chapter 12: An I/O Project</a
+        >（繁中版：<a
+          href="https://rust-lang.tw/book-tw/ch12-01-accepting-command-line-arguments.html"
+          target="_blank"
+          >rust-lang.tw</a
+        >）。整章從零做一個
+        <code>grep</code
+        >，參數解析、錯誤處理、測試一次走完，跟你這個工具的路線幾乎一樣，
+        很值得整章讀。<code>while let</code> 本身在
+        <a
+          href="https://doc.rust-lang.org/book/ch19-01-all-the-places-for-patterns.html"
+          target="_blank"
+          >ch19.1</a
+        >。
+      </p>
+
+      <nav class="lesson-links">
+        <a href="0025-closures.html">&larr; 上一課：閉包</a>
+        <a href="#">下一課：待訂 &rarr;</a>
+      </nav>
+
+      <p class="ask-agent">
+        卡住了、或有任何看不懂的地方，直接問我（你的 AI 教學助手）就好 ——
+        隨時可以打斷這個流程提問。
+      </p>
+    </main>
+  </body>
+</html>

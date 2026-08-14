@@ -82,6 +82,73 @@ AppError::UnknownFlag(flag) =&gt; write!(f, "不認識的選項：{}", flag),</c
         1。新增錯誤變體不需要動 <code>main()</code>。
       </p>
 
+      <h2>帶值的旗標（<code>--min 3</code>）</h2>
+      <p>
+        值在<strong>下一個</strong>參數裡，所以迴圈必須能自己多走一步。<code>for</code> 做不到 ——
+        它用 <code>into_iter()</code> 把 iterator 的所有權拿走了，在迴圈裡呼叫 <code>next()</code> 會得到
+        <code>borrow of moved value</code>。改用 <code>while let</code>，iterator 就留在你手上。
+      </p>
+      <pre><code>let mut min: usize = 1;
+let mut args = env::args().skip(1);
+
+while let Some(arg) = args.next() {
+    match arg.as_str() {
+        "--min" =&gt; match args.next() {
+            Some(value) =&gt; min = value.parse()?,
+            None =&gt; return Err(AppError::MissingValue("--min".to_string())),
+        },
+        _ if arg.starts_with("-") =&gt; return Err(AppError::UnknownFlag(arg)),
+        _ =&gt; filename = Some(arg),
+    }
+}</code></pre>
+      <table>
+        <thead>
+          <tr>
+            <th>片段</th>
+            <th>作用</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><code>while let Some(arg) = args.next()</code></td>
+            <td>
+              跟 <code>if let</code> 同一種解構，只是重複做，直到 <code>next()</code> 回傳
+              <code>None</code>（參數用完）為止。
+            </td>
+          </tr>
+          <tr>
+            <td>分支內的 <code>args.next()</code></td>
+            <td>
+              把值「吃掉」，下一圈才不會把它當檔名。忘了吃掉不會編譯失敗 ——
+              只會在某些參數順序下把值誤存成檔名。
+            </td>
+          </tr>
+          <tr>
+            <td><code>None =&gt; ...</code></td>
+            <td>
+              <code>--min</code> 是最後一個參數，沒有值。<code>Option</code> 逼你處理這個分支。
+            </td>
+          </tr>
+          <tr>
+            <td><code>value.parse()?</code></td>
+            <td>
+              命令列給的永遠是 <code>String</code>。<code>parse</code> 回傳
+              <code>Result&lt;usize, ParseIntError&gt;</code>，目標型別由左邊的變數推導。
+            </td>
+          </tr>
+        </tbody>
+      </table>
+      <p>
+        <code>?</code> 要能用，<code>AppError</code> 必須有 <code>From&lt;ParseIntError&gt;</code>，
+        否則是 <code>the trait From&lt;ParseIntError&gt; is not implemented for AppError</code>。
+        跟 <code>std::io::Error</code> 那個實作同一個形狀：
+      </p>
+      <pre><code>impl From&lt;std::num::ParseIntError&gt; for AppError {
+    fn from(e: std::num::ParseIntError) -&gt; AppError {
+        AppError::BadNumber(e)
+    }
+}</code></pre>
+
       <div class="callout tip">
         選項一多、需要 <code>-c</code> 這種短名稱、或需要自動產生
         <code>--help</code> 時，實務上會換成
@@ -99,7 +166,7 @@ AppError::UnknownFlag(flag) =&gt; write!(f, "不認識的選項：{}", flag),</c
           >19.3 Match Guards</a
         >。 對應課程：<a href="../lessons/0022-command-line-flags.html"
           >Lesson 22 · 命令列選項：解析 flag</a
-        >。
+        >、<a href="../lessons/0026-flags-with-values.html">Lesson 26 · 讓旗標帶一個值</a>。
       </p>
     </main>
   </body>

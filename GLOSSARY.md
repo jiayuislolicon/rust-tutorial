@@ -232,3 +232,12 @@ The three categories a closure falls into, named after what it does to what it c
 
 **`sort_by` / `retain` / `sort_by_key`**:
 The `Vec` methods that take a closure. `sort_by(|a, b| a.cmp(b))` sorts ascending; swapping the operands to `b.cmp(a)` reverses it. `sort_by_key(|x| ...)` is the more readable form when you're sorting on one field. `retain(|x| ...)` deletes non-matching elements in place. `retain` is the one that shows off capture — its closure can test against a local variable, which a plain `fn` could never do. See [[HashMap iteration order]] for why sorting a `Vec` is the standard move for human-facing output.
+
+**`while let`**:
+`if let` that repeats. `while let Some(x) = iter.next() { ... }` keeps destructuring until the pattern stops matching — for an iterator that means until `next()` returns `None`. The loop's exit condition is a failed pattern match, not a counter. Reach for it over `for` when the loop body needs to advance the iterator itself; `for` takes ownership of the iterator via `into_iter()`, so calling `next()` inside a `for` body gives `borrow of moved value`.
+
+**`parse`**:
+`"5".parse()` turns text into a number (or anything implementing `FromStr`). It returns `Result<T, ParseIntError>`, never a bare number, because the text may not be a number. The target type comes from the left-hand side — `let n: usize = value.parse()?` — or from a turbofish, `value.parse::<usize>()`. Everything a program receives from the command line or from a file starts as text; `parse` is the boundary crossing.
+
+**帶值的旗標（Flag with a value）**:
+A command-line option whose information sits in the *next* argument (`--min 3`, `head -n 20`), as opposed to a boolean switch (`--count-only`). The parsing loop must consume that next argument itself, or it falls through to the filename branch. Failing to consume it is not a compile error — it produces a bug that depends on argument order, which is why the pattern is worth knowing by shape. See [[`while let`]].

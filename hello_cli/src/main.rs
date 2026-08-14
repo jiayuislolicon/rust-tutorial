@@ -10,11 +10,17 @@ fn run() -> Result<(), AppError> {
     let mut filename: Option<String> = None;
     let mut count_only: bool = false;
     let mut words_count_only: bool = false;
+    let mut min: usize = 1;
+    let mut args = env::args().skip(1);
 
-    for arg in env::args().skip(1) {
+    while let Some(arg) = args.next() {
         match arg.as_str() {
             "--count-only" => count_only = true,
             "--words" => words_count_only = true,
+            "--min" => match args.next() {
+                Some(value) => min = value.parse()?,
+                None => return Err(AppError::MissingValue("--min".to_string())),
+            },
             _ if arg.starts_with("-") => return Err(AppError::UnknownFlag(arg)),
             _ => filename = Some(arg),
         }
@@ -32,7 +38,6 @@ fn run() -> Result<(), AppError> {
 
     if words_count_only {
         let counts = report.word_counts();
-        let min = 2;
         let mut pairs: Vec<(&String, &usize)> = counts.iter().collect();
 
         pairs.retain(|pair| *pair.1 >= min);
