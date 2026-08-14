@@ -65,9 +65,35 @@ self        整個值被吃掉不還      （少見）</code></pre>
 <pre><code>String::from(...)   String::new()   Vec::new()
 都是「型別::函式」— 沒有 self，只是產生一個新實例。</code></pre>
 
+<h2>Derived fields go stale</h2>
+<p>A field computed from another field is a cache. Nothing in the type keeps it fresh — <code>&amp;mut self</code> lets a method change the source and leave the cache behind.</p>
+<pre><code>pub struct Report {
+    pub content: String,
+    pub line_count: usize,   // derived from content — a promise you keep by hand
+}
+
+pub fn add_title(&amp;mut self) {
+    self.content.insert_str(0, &amp;title);   // content grew, line_count did not
+}</code></pre>
+
+<table>
+<thead><tr><th></th><th>Recompute on demand</th><th>Cache and refresh</th></tr></thead>
+<tbody>
+<tr><td>Shape</td><td><code>fn line_count(&amp;self) -&gt; usize { self.content.lines().count() }</code></td><td>Field stays; every <code>&amp;mut self</code> method updates it</td></tr>
+<tr><td>Cost per call</td><td>Walks the data</td><td>Reads one number</td></tr>
+<tr><td>Cost per new method</td><td>Nothing</td><td>One line, and remembering it</td></tr>
+<tr><td>Failure mode</td><td>Slow, measurable</td><td>Silent, wrong, no test fires</td></tr>
+<tr><td>Requires</td><td>Nothing</td><td>Private fields, all writes via methods</td></tr>
+</tbody>
+</table>
+
+<p>Test the rule, not the number. <code>assert_eq!(report.line_count(), empty + comment + code)</code> can only pass when the two counts agree; <code>assert_eq!(report.line_count(), 3)</code> passes while the tool is still wrong.</p>
+
+<p>Reading an unfamiliar struct: a count beside a collection, a total beside a list, a flag beside the data it describes — each one is a rule nothing enforces.</p>
+
 <p class="source">
 來源：<a href="https://doc.rust-lang.org/book/ch05-01-defining-structs.html" target="_blank">The Rust Book — 5.1 Defining and Instantiating Structs</a>、<a href="https://doc.rust-lang.org/book/ch05-03-method-syntax.html" target="_blank">5.3 Method Syntax</a>（繁中版：<a href="https://rust-lang.tw/book-tw/ch05-01-defining-structs.html" target="_blank">rust-lang.tw</a>）。
-對應課程：<a href="../lessons/0013-structs-and-custom-types.html">Lesson 13 · struct 與自訂型別</a>。相關：<a href="string-types.html">字串型別參考卡</a>、<a href="ownership-and-borrowing.html">所有權與借用參考卡</a>。
+對應課程：<a href="../lessons/0013-structs-and-custom-types.html">Lesson 13 · struct 與自訂型別</a>、<a href="../lessons/0027-stale-derived-state.html">Lesson 27 · The field that went stale</a>。相關：<a href="string-types.html">字串型別參考卡</a>、<a href="ownership-and-borrowing.html">所有權與借用參考卡</a>。
 </p>
 
 </main>

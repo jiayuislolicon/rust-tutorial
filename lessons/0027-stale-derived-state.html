@@ -1,0 +1,389 @@
+<!doctype html>
+<html lang="zh-Hant">
+  <head>
+    <meta charset="UTF-8" />
+    <title>Lesson 27 · 悄悄過期的欄位：當快取不再可靠</title>
+    <link rel="stylesheet" href="../assets/style.css" />
+    <script src="../assets/quiz.js"></script>
+  </head>
+  <body>
+    <main>
+      <div class="kicker">Lesson 0027 · Rust · CLI 工具養成路線</div>
+      <h1>悄悄過期的欄位：當快取不再可靠</h1>
+      <div class="byline">
+        <strong>學習目標：</strong>你的工具印出了兩個互相矛盾的數字，但編譯器卻一聲不吭。你會找出原因，寫一個測試來鎖定你真正的意圖，然後用兩種不同的方式修復它。這裡真正的核心技能是：學會閱讀 <code>struct</code>，並一眼看出哪個欄位是需要手動保持同步的「地雷」。
+      </div>
+
+      <h2>1. 你的工具在對你說謊</h2>
+
+      <p>用你的工具跑一次 <code>notes.txt</code>：</p>
+
+      <pre><code>cargo run -- --count-only notes.txt</code></pre>
+
+      <pre><code>notes.txt：共 3 行
+空行 0 行，註解 0 行，程式碼 4 行</code></pre>
+
+      <p>
+        總共 3 行，但程式碼卻有 4 行？這兩個數字都來自同一個檔案、同一次執行，但它們卻互相打架。沒有任何東西崩潰，結束代碼（exit code）也是完美的 0。
+      </p>
+
+      <p>
+        這比你在 Lesson 26 遇到的錯誤更糟。那些錯誤會讓程式停下來並印出警告。但這個 Bug 卻是塞給你一個錯誤答案，而且還表現得自信滿滿。
+      </p>
+
+      <p>來看看 <code>report.rs</code> 裡這兩個數字是從哪來的：</p>
+
+      <pre><code>pub fn new(filename: &amp;str, content: String) -&gt; Report {
+    let line_count = content.lines().count();   // 只在這裡算過一次
+
+    Report { filename: filename.to_string(), content, line_count }
+}
+
+pub fn summary(&amp;self) -&gt; String {
+    format!("{}：共 {} 行", self.filename, self.line_count)   // 讀取存好的數字
+}
+
+pub fn count_kinds(&amp;self) -&gt; (usize, usize, usize) {
+    // 每次呼叫時，都會重新計算 self.content.lines()
+}</code></pre>
+
+      <p>而這是在 <code>main.rs</code> 裡，卡在它們之間執行的那個方法：</p>
+
+      <pre><code>report.add_title();          // &lt;- 就是它
+println!("{}", report.summary());
+let (empty, comment, code) = report.count_kinds();</code></pre>
+
+      <pre><code>pub fn add_title(&amp;mut self) {
+    let title = format!("=== {} ===\n", self.filename);
+    self.content.insert_str(0, &amp;title);
+}</code></pre>
+
+      <p>
+        <code>add_title</code> 往 <code>self.content</code> 裡多塞了一行。
+        <code>count_kinds</code> 重新計算，所以看到了 4 行。但 <code>line_count</code> 是在標題出現前就算好的，所以它還是 3。它再也沒有機會更新了。
+      </p>
+
+      <div class="callout">
+        💡 <strong>這個模式是有名字的。</strong>當一個欄位的值是從另一個欄位推導（derived）出來的，它就是一個快取（cache）。當來源改變，快取卻沒有跟著更新時，我們就說這個快取<strong>過期（stale）</strong>了。這是軟體工程中最古老的 Bug 形狀之一，而且 Rust 並不會保護你免受其害。
+      </div>
+
+      <h2>2. 為什麼編譯器一聲不吭</h2>
+
+      <p>
+        在過去的六課裡，Rust 總是不留情面地拒絕編譯你的錯誤。所有權、借用、窮盡的 <code>match</code>、錯誤轉換。那為什麼這次它卻放過你了？
+      </p>
+
+      <p>
+        因為編譯器根本不知道 <code>line_count</code> 和 <code>content</code> 有任何關係。用編譯器的視角來看看這個 struct：
+      </p>
+
+      <pre><code>pub struct Report {
+    pub filename: String,
+    pub content: String,
+    pub line_count: usize,   // 只是一個 usize。沒有任何東西把它和 content 連在一起。
+}</code></pre>
+
+      <p>
+        對你來說，<code>line_count</code> 的意思是「<code>content</code> 裡的行數」。但對編譯器來說，它就只是一個剛好坐在 <code>String</code> 旁邊的 <code>usize</code>。這層關係只存在你的腦海裡，以及 <code>new</code> 函式裡那行剛好把它算出來的程式碼中。
+      </p>
+
+      <p>
+        而且 <code>&amp;mut self</code> 給了方法修改<em>任何</em>欄位的權限。<code>add_title</code> 當然可以只動 <code>content</code> 而不碰 <code>line_count</code>，因為這正是 <code>&amp;mut self</code> 賦予它的權力。
+      </p>
+
+      <p>這就是 Rust 幫你檢查的真實邊界：</p>
+
+      <table>
+        <thead>
+          <tr>
+            <th>編譯器抓得到的</th>
+            <th>編譯器抓不到的</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>在值被 move 之後繼續使用</td>
+            <td>存起來的數字現在已經過期了</td>
+          </tr>
+          <tr>
+            <td>同時存在兩個可變借用</td>
+            <td>兩個應該要同步的欄位卻互相矛盾</td>
+          </tr>
+          <tr>
+            <td>你忘記寫的 <code>match</code> 分支</td>
+            <td>你忘記更新的欄位</td>
+          </tr>
+        </tbody>
+      </table>
+
+      <p>
+        左邊那一欄關乎<strong>記憶體安全</strong>。右邊那一欄關乎<strong>意義</strong>，而賦予意義是你的工作。Rust 非常擅長前者，但對後者完全沒有意見。
+      </p>
+
+      <h2>3. 用測試把「意義」釘死</h2>
+
+      <p>
+        既然這層關係只存在你的腦海裡，那就把它寫在會報錯的地方。把這段加到 <code>report.rs</code> 最底下的 <code>tests</code> 模組裡：
+      </p>
+
+      <pre><code>#[test]
+fn summary_agrees_with_count_kinds() {
+    let mut report = Report::new("t.txt", "a\nb\nc\n".to_string());
+    report.add_title();
+
+    let (empty, comment, code) = report.count_kinds();
+    assert_eq!(report.line_count, empty + comment + code);
+}</code></pre>
+
+      <p>跑一次 <code>cargo test</code>：</p>
+
+      <pre><code>assertion `left == right` failed
+  left: 3
+ right: 4</code></pre>
+
+      <p>
+        這就是你在終端機裡看到的那個 Bug，現在它被困在自動化測試裡了。注意這個測試斷言（assert）了什麼：它不是說「line_count 必須是 3」，而是說<strong>「這兩種計算行數的方式必須一致」</strong>。如果測試只是死盯著數字 3，那就算工具的邏輯還是錯的，測試也可能剛好通過。這個測試宣告的是規則，所以只有當規則成立時它才會過。
+      </p>
+
+      <div class="callout tip">
+        💡 先讓這個測試保持失敗狀態。你接下來會用兩種方式修復它，而一個會失敗的測試，正是你用來驗證修復是否真的有效的最佳工具。
+      </div>
+
+      <h2>4. 解法 A：不要存它</h2>
+
+      <p>
+        如果數字是因為被存起來才過期，那就不要存它。等有人問的時候再算就好。
+      </p>
+
+      <p>
+        首先，把這個欄位從 struct 裡刪掉。就刪那一行。然後跑 <code>cargo build</code>，看看編譯器會說什麼：
+      </p>
+
+      <pre><code>error[E0560]: struct `report::Report` has no field named `line_count`
+  --&gt; src/report.rs:23:13
+
+error[E0609]: no field `line_count` on type `&amp;report::Report`
+  --&gt; src/report.rs:28:50</code></pre>
+
+      <p>
+        兩個錯誤，兩個地方：一個是建立它的地方，一個是讀取它的地方。這就是編譯器在發揮它的強項。它沒辦法告訴你值是錯的，但只要你一刪掉欄位，它就會把所有依賴這個欄位的程式碼全部列出來。「刪掉東西然後讀錯誤訊息」，是找出誰在使用它的正當手法。
+      </p>
+
+      <div class="compare compare-before">
+        <div class="kicker">🔴 修改前 —— 一個曾經正確的數字</div>
+        <pre><code>pub struct Report {
+    pub content: String,
+    pub line_count: usize,
+}
+
+pub fn new(filename: &amp;str, content: String) -&gt; Report {
+    let line_count = content.lines().count();
+    Report { /* ... */ line_count }
+}
+
+pub fn summary(&amp;self) -&gt; String {
+    format!("{}：共 {} 行", self.filename, self.line_count)
+}</code></pre>
+      </div>
+
+      <div class="compare compare-after">
+        <div class="kicker">🟢 修改後 —— 當場回答的問題</div>
+        <pre><code>pub struct Report {
+    pub content: String,
+}
+
+pub fn new(filename: &amp;str, content: String) -&gt; Report {
+    Report { filename: filename.to_string(), content }
+}
+
+pub fn line_count(&amp;self) -&gt; usize {
+    self.content.lines().count()
+}
+
+pub fn summary(&amp;self) -&gt; String {
+    format!("{}：共 {} 行", self.filename, self.line_count())
+}</code></pre>
+      </div>
+
+      <p>
+        把測試裡的 <code>report.line_count</code> 改成呼叫 <code>report.line_count()</code>，然後跑測試：
+      </p>
+
+      <pre><code>test result: ok. 6 passed; 0 failed
+
+notes.txt：共 4 行
+空行 0 行，註解 0 行，程式碼 4 行</code></pre>
+
+      <p>
+        兩個數字都是 4 了。它們現在來自同一個源頭，所以永遠不會分岔。欄位會過期；但方法根本沒有東西可以過期。
+      </p>
+
+      <h2>5. 解法 B：留著它，並手動維護</h2>
+
+      <p>
+        另一個選擇是保留存起來的欄位，但要求每一個會修改 <code>content</code> 的方法都要負責更新它：
+      </p>
+
+      <pre><code>pub fn add_title(&amp;mut self) {
+    let title = format!("=== {} ===\n", self.filename);
+    self.content.insert_str(0, &amp;title);
+    self.line_count = self.content.lines().count();   // 新增這行
+}</code></pre>
+
+      <p>
+        這招也行得通。測試過了，工具也印出 4 和 4。那麼，我們來模擬一下六個月後這份程式碼身上真實會發生的事 —— 有人加了第二個會修改 <code>content</code> 的方法：
+      </p>
+
+      <pre><code>pub fn add_footer(&amp;mut self) {
+    self.content.push_str("=== end ===\n");
+}</code></pre>
+
+      <p>在 <code>main.rs</code> 裡，把它加在 <code>add_title</code> 旁邊，然後：</p>
+
+      <pre><code>0 errors, 0 warnings
+test result: ok. 6 passed; 0 failed
+
+notes.txt：共 4 行
+空行 0 行，註解 0 行，程式碼 5 行</code></pre>
+
+      <p>
+        Bug 原汁原味地回來了。乾淨的編譯、綠色的測試，但輸出卻是錯的。因為測試只知道 <code>add_title</code>，所以新方法就這麼大搖大擺地闖了過去。
+      </p>
+
+      <p>
+        如果你拿解法 A 來做同樣的實驗，數字會緊緊黏在一起 —— 5 和 5 —— 而且你完全不需要多寫任何一行程式碼。這就是值得你記住的差別：解法 B 需要人類在每次新增方法時，都靠意志力記住這件事。解法 A 則完全不需要記憶。
+      </p>
+
+      <h2>6. 所以該選哪一個？</h2>
+
+      <p>
+        這兩種做法在真實的 Rust 專案裡都會用到。Rust 官方教學（The Rust Book）在 <code>AveragedCollection</code> 的範例中，刻意教了解法 B：讓 <code>add</code> 和 <code>remove</code> 都去更新存好的平均值。那裡的重點是：解法 B 只有在欄位是<strong>私有（private）</strong>，而且所有會改變來源的路徑都必須經過你控制的方法時，才是安全的。
+      </p>
+
+      <p>這裡列出它們各自的代價，讓你自己選：</p>
+
+      <table>
+        <thead>
+          <tr>
+            <th></th>
+            <th>解法 A：重新計算</th>
+            <th>解法 B：快取並同步更新</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>每次呼叫的代價</td>
+            <td>每次都要掃過整個字串</td>
+            <td>只讀取一個 <code>usize</code></td>
+          </tr>
+          <tr>
+            <td>新增方法的代價</td>
+            <td>無</td>
+            <td>多寫一行，而且要記得寫</td>
+          </tr>
+          <tr>
+            <td>失敗時的表現</td>
+            <td>變慢，但你可以測量出來</td>
+            <td>安靜且錯誤，而且測試抓不到</td>
+          </tr>
+          <tr>
+            <td>前提條件</td>
+            <td>無</td>
+            <td>私有欄位，嚴格控制的存取權限</td>
+          </tr>
+        </tbody>
+      </table>
+
+      <p>
+        對 <code>hello_cli</code> 來說，<code>summary()</code> 每次執行只會被呼叫一次，而且讀取的檔案通常一眨眼就掃完了，所以重新計算的代價你根本感覺不到。但如果這是一個每秒要被讀取數千次的 struct，權衡起來就不一樣了，這時你就會需要解法 B <em>加上</em>私有欄位 —— 記住，絕對不要只寫快取而不做權限控制。
+      </p>
+
+      <div class="callout">
+        💡 <strong>閱讀的技能。</strong>當你打開一個陌生的 <code>struct</code>，試著尋找那些「可以從其他欄位推導出來」的欄位：集合旁邊的計數器、清單旁邊的總和、或是描述資料狀態的旗標。這每一個都是型別必須靠人工兌現的承諾 —— 當程式輸出不合理時，這絕對是你第一個該檢查的地方。
+      </div>
+
+      <h2>7. 檢查你記得多少</h2>
+
+      <div class="quiz" data-mcq data-answer="3">
+        <div class="q">
+          為什麼編譯器對 <code>add_title</code> 毫無怨言地放行了？
+        </div>
+        <div class="choices">
+          <button>因為 usize 欄位本來就允許是錯的</button>
+          <button>因為 insert_str 無法向呼叫者回報錯誤</button>
+          <button>因為在型別層面，這兩個欄位沒有任何關聯</button>
+          <button>因為 add_title 是可變借用 self，而不是共享借用</button>
+        </div>
+        <div
+          class="feedback"
+          data-ok="答對了。line_count 只是坐在 String 旁邊的一個 usize。這層關係只存在你的腦海裡，不在型別裡，所以 &amp;mut self 允許方法只改其中一個而不碰另一個。"
+          data-bad="想一下編譯器在 struct 定義裡實際看到了什麼。它只看到一個 String 和一個 usize。哪一個選項跟這個有關？"
+        ></div>
+      </div>
+
+      <div class="quiz" data-mcq data-answer="4">
+        <div class="q">
+          你選了解法 B。後來有人加了一個會修改 <code>content</code> 的方法，卻忘了寫更新快取的那一行。會發生什麼事？
+        </div>
+        <div class="choices">
+          <button>編譯失敗，並指出哪個欄位沒有被更新</button>
+          <button>編譯通過，但會出現 dead code 警告指向它</button>
+          <button>編譯通過，而且現有的測試會抓到這個改動</button>
+          <button>編譯通過，測試通過，但輸出是錯的</button>
+        </div>
+        <div
+          class="feedback"
+          data-ok="答對了。這正是我們加入 add_footer 時發生的事：0 個錯誤，0 個警告，6 個測試綠燈，然後工具印出了總共 4 行、程式碼卻有 5 行的荒謬結果。"
+          data-bad="我們剛剛才實際跑過這個實驗。工具鏈裡沒有任何東西攔下它。這就是為什麼解法 B 需要靠人類的紀律來維持。"
+        ></div>
+      </div>
+
+      <div class="quiz" data-mcq data-answer="1">
+        <div class="q">
+          閱讀一個陌生的 struct 時，哪一種欄位最值得你起疑心？
+        </div>
+        <div class="choices">
+          <button>儲存了可以從其他欄位推導出來的值的欄位</button>
+          <button>儲存了你從沒見過的型別的欄位</button>
+          <button>儲存了 Option 的欄位，因為它可能是 None</button>
+          <button>儲存了 String 的欄位，因為它擁有自己的記憶體</button>
+        </div>
+        <div
+          class="feedback"
+          data-ok="答對了。推導出來的值，是這個型別必須靠人工兌現的承諾。陌生的型別和 Option 是你去查文件就能懂的東西；但推導欄位是你必須親自驗證的邏輯。"
+          data-bad="陌生的型別查文件就好，Option 有編譯器幫你檢查。這些選項中，哪一個是沒有任何機制強制保證正確性的？"
+        ></div>
+      </div>
+
+      <div class="win">
+        <div class="kicker">這一課的成果</div>
+        你在自己的程式碼裡找到了一個真實的 Bug，寫了一個描述「<em>為什麼</em>這很重要」而不是「目前印出什麼」的測試，並用兩種方式修復它，同時看清了各自的代價。<br /><br />
+        你也學到了 Rust 的保證在哪裡止步。所有權和借用保護的是記憶體，它們不保護「意義」。帶有推導欄位的 struct 身上背負著一條規則，而這條規則只能靠你和你的測試來把關。<br /><br />
+        速查表：<a href="../reference/structs-and-custom-types.html"
+          >structs 速查</a
+        >、<a href="../reference/unit-testing.html">單元測試速查</a>。
+      </div>
+
+      <p class="source">
+        主要參考資料：
+        <a href="https://doc.rust-lang.org/book/ch18-01-what-is-oo.html" target="_blank"
+          >The Rust Programming Language — 18.1 Characteristics of
+          Object-Oriented Languages</a
+        >
+        （繁中版：
+        <a href="https://rust-lang.tw/book-tw/ch17-01-what-is-oo.html" target="_blank"
+          >rust-lang.tw ch17.1</a
+        >）。裡面的 <code>AveragedCollection</code> 範例完美對應了這個問題，並用解法 B 來解決。該章節也解釋了為什麼「私有欄位」是讓這個選擇變得安全的關鍵。篇幅不長，非常值得一讀。
+      </p>
+
+      <nav class="lesson-links">
+        <a href="0026-flags-with-values.html">&larr; 上一課：讓旗標帶一個值</a>
+        <a href="#">下一課：待訂 &rarr;</a>
+      </nav>
+
+      <p class="ask-agent">
+        卡住了、或有任何看不懂的地方，直接問我（你的 AI 教學助手）就好 —— 隨時可以打斷這個流程提問。
+      </p>
+    </main>
+  </body>
+</html>

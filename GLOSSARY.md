@@ -241,3 +241,9 @@ The `Vec` methods that take a closure. `sort_by(|a, b| a.cmp(b))` sorts ascendin
 
 **帶值的旗標（Flag with a value）**:
 A command-line option whose information sits in the *next* argument (`--min 3`, `head -n 20`), as opposed to a boolean switch (`--count-only`). The parsing loop must consume that next argument itself, or it falls through to the filename branch. Failing to consume it is not a compile error — it produces a bug that depends on argument order, which is why the pattern is worth knowing by shape. See [[`while let`]].
+
+**Derived field（衍生欄位）**:
+A struct field whose value can be computed from another field — a line count beside the text it counts, a total beside the list it sums. It is a cache, and nothing in the type refreshes it. `&mut self` lets a method change the source field and leave the derived one behind, and that compiles cleanly. Two ways out: delete the field and compute in a method (nothing left to go stale), or keep it and update it in every mutating method (needs private fields and discipline). See [[Invariant]].
+
+**Invariant（不變式）**:
+A rule about a value that must hold at all times — "`line_count` equals the number of lines in `content`", "this `Vec` is always sorted". Rust enforces invariants about *memory* (ownership, borrowing, exhaustive `match`) but has no way to express one about *meaning*. Those are held up by private fields, by methods that are the only way in, and by tests. A test that pins an invariant asserts a relationship (`a == b + c`), not a literal value — a test asserting the literal passes while the code is still wrong. See [[Derived field（衍生欄位）]].

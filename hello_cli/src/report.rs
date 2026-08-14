@@ -5,7 +5,6 @@ use std::fs;
 pub struct Report {
     pub filename: String,
     pub content: String,
-    pub line_count: usize,
 }
 
 pub enum LineKind {
@@ -16,17 +15,14 @@ pub enum LineKind {
 
 impl Report {
     pub fn new(filename: &str, content: String) -> Report {
-        let line_count = content.lines().count();
-
         Report {
             filename: filename.to_string(),
             content,
-            line_count,
         }
     }
 
     pub fn summary(&self) -> String {
-        format!("{}：共 {} 行", self.filename, self.line_count)
+        format!("{}：共 {} 行", self.filename, self.line_count())
     }
 
     pub fn add_title(&mut self) {
@@ -64,6 +60,10 @@ impl Report {
             .count();
 
         (empty_counts, comment_counts, code_counts)
+    }
+
+    pub fn line_count(&self) -> usize {
+        self.content.lines().count()
     }
 
     pub fn word_counts(&self) -> BTreeMap<String, usize> {
@@ -124,5 +124,14 @@ mod tests {
         assert_eq!(counts_map.get("code"), Some(&2));
         assert_eq!(counts_map.get("nothing"), None);
         assert_eq!(counts_map.len(), 3);
+    }
+
+    #[test]
+    fn summary_agrees_with_count_kinds() {
+        let mut report = Report::new("t.txt", "a\nb\nc\n".to_string());
+        report.add_title();
+
+        let (empty, comment, code) = report.count_kinds();
+        assert_eq!(report.line_count(), empty + comment + code);
     }
 }
