@@ -1,0 +1,98 @@
+<!doctype html>
+<html lang="zh-Hant">
+  <head>
+    <meta charset="UTF-8" />
+    <title>參考卡 · Trait 與泛型</title>
+    <link rel="stylesheet" href="../assets/style.css" />
+  </head>
+  <body>
+    <main>
+      <div class="kicker">Reference · Rust</div>
+      <h1>Trait 與泛型</h1>
+      <div class="byline">
+        來自 <a href="../lessons/0028-generic-functions-and-trait-bounds.html">Lesson 28</a>。<strong>Trait = 一個型別擁有的能力。泛型 = 一份程式碼服務多個型別。Trait bound = 把泛型限縮到「只要有這個能力就好」。</strong>
+      </div>
+
+      <h2>Trait：宣告與實作</h2>
+
+      <pre><code>trait Summarize {
+    fn summary(&amp;self) -&gt; String;
+}
+
+impl Summarize for Report {
+    fn summary(&amp;self) -&gt; String {
+        format!("{}：共 {} 行", self.filename, self.line_count())
+    }
+}</code></pre>
+
+      <p>
+        跟 TypeScript 的 <code>interface</code> 加 <code>implements</code> 是同一件事：<code>trait</code>
+        只宣告簽名，<code>impl Trait for Type</code> 才補上實作。一個型別可以實作很多個 trait。
+      </p>
+
+      <h2>泛型函式：一份程式碼，多個型別</h2>
+
+      <pre><code>fn largest&lt;T&gt;(list: &amp;[T]) -&gt; &amp;T {
+    let mut largest = &amp;list[0];
+    for item in list {
+        if item &gt; largest {   // error[E0369]：&lt;T&gt; 沒有承諾支援 &gt;
+            largest = item;
+        }
+    }
+    largest
+}</code></pre>
+
+      <p>
+        沒有 trait bound 的 <code>&lt;T&gt;</code> 只承諾「這是某個型別」，沒有承諾它能被比較、印出或做任何操作。
+      </p>
+
+      <h2>加上 trait bound</h2>
+
+      <pre><code>fn largest&lt;T: PartialOrd&gt;(list: &amp;[T]) -&gt; &amp;T {
+    // 同一份 body，現在合法了
+}
+
+largest(&amp;vec![34, 50, 25, 100, 65]);      // -&gt; 100
+largest(&amp;vec!["rust", "cargo", "compiler"]); // -&gt; "rust"</code></pre>
+
+      <table>
+        <thead>
+          <tr><th>寫法</th><th>意思</th></tr>
+        </thead>
+        <tbody>
+          <tr><td><code>&lt;T&gt;</code></td><td>任何型別，但你只能移動它、存起來，不能比較或印出</td></tr>
+          <tr><td><code>&lt;T: PartialOrd&gt;</code></td><td>任何有 <code>&gt;</code>/<code>&lt;</code> 的型別</td></tr>
+          <tr><td><code>&lt;T: Display&gt;</code></td><td>任何能用 <code>{}</code> 印出的型別</td></tr>
+          <tr><td><code>&lt;T: Display + PartialOrd&gt;</code></td><td>同時滿足兩個條件，用 <code>+</code> 疊加</td></tr>
+        </tbody>
+      </table>
+
+      <h2>讀標準庫簽名時，把 bound 當成使用條件</h2>
+
+      <table>
+        <thead>
+          <tr><th>簽名（節錄）</th><th>bound 在告訴你什麼</th></tr>
+        </thead>
+        <tbody>
+          <tr><td><code>impl&lt;T: Ord&gt; Vec&lt;T&gt; { fn sort(&amp;mut self) }</code></td><td>只有元素能排序的 <code>Vec</code> 才有 <code>.sort()</code></td></tr>
+          <tr><td><code>impl&lt;K: Eq + Hash, V&gt; HashMap&lt;K, V&gt;</code></td><td>key 必須能判斷相等、能算 hash，value 沒有限制</td></tr>
+          <tr><td><code>fn print_all&lt;T: Display&gt;(items: &amp;[T])</code></td><td>只有能印出的型別才能傳進來</td></tr>
+        </tbody>
+      </table>
+
+      <p>
+        看到編譯錯誤說某個方法不存在（<code>E0599</code>）或某個運算子不能用（<code>E0369</code>）时，
+        先去找函式簽名上的 trait bound —— 十之八九是你的型別沒有滿足它。
+      </p>
+
+      <p class="source">
+        來源：<a href="https://doc.rust-lang.org/book/ch10-01-syntax.html" target="_blank"
+          >TRPL Chapter 10.1: Generic Data Types</a
+        >、<a href="https://doc.rust-lang.org/book/ch10-02-traits.html" target="_blank"
+          >10.2: Traits</a
+        >（繁中版：<a href="https://rust-lang.tw/book-tw/ch10-02-traits.html" target="_blank">rust-lang.tw</a>）。相關參考卡：<a
+          href="structs-and-custom-types.html">structs 速查</a>、<a href="std-types.html">標準庫型別地圖</a>。
+      </p>
+    </main>
+  </body>
+</html>

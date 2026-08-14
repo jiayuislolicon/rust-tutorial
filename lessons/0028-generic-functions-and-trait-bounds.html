@@ -1,0 +1,252 @@
+<!doctype html>
+<html lang="zh-Hant">
+  <head>
+    <meta charset="UTF-8" />
+    <title>Lesson 28 · 一個函式，服務所有型別：泛型與 trait bound</title>
+    <link rel="stylesheet" href="../assets/style.css" />
+    <script src="../assets/quiz.js"></script>
+  </head>
+  <body>
+    <main>
+      <div class="kicker">Lesson 0028 · Rust · CLI 工具養成路線</div>
+      <h1>一個函式，服務所有型別：泛型與 trait bound</h1>
+      <div class="byline">
+        <strong>學習目標：</strong>你會寫一個對數字有效的函式，然後發現同一份邏輯換成文字就編譯失敗。你會學會為什麼，用一行程式碼修好它，並學會怎麼讀陌生程式碼裡那些角括號塞滿條件的函式簽名。
+      </div>
+
+      <h2>1. 這個函式簽名，你現在還讀不懂</h2>
+
+      <p>
+        去讀任何一份 Rust 文件或別人寫的函式庫，你遲早會撞到長這樣的簽名：
+      </p>
+
+      <pre><code>fn largest&lt;T: PartialOrd&gt;(list: &amp;[T]) -&gt; &amp;T</code></pre>
+
+      <p>
+        Lesson 24 你已經見過角括號裡的 <code>&lt;T&gt;</code>，知道它代表「這裡可以放任何型別」。但這次角括號裡多了一個冒號，後面還跟著一個陌生的名字：<code>PartialOrd</code>。這一課就是來拆這件事的 —— 讀完之後，你會知道這個冒號在把關什麼，也會知道少了它會發生什麼事。
+      </p>
+
+      <h2>2. Trait：貼在型別身上的技能貼紙</h2>
+
+      <p>
+        <strong>Trait</strong>（特徵）宣告一種能力，型別要嘛有、要嘛沒有。你可以把它想成一張<strong>技能貼紙</strong>：<code>Display</code> 的意思是「我知道怎麼把自己印成文字」，<code>PartialOrd</code> 是「我知道怎麼比大小」。貼紙上只寫能力的名字和用法，不寫怎麼做；真正的實作，要等 <code>impl</code> 才補上去。
+      </p>
+
+      <p>
+        你已經在 <code>GLOSSARY.md</code> 見過這個字，但還沒正式學過怎麼自己寫一個。跟 TypeScript 的 <code>interface</code> 是同一個角色：
+      </p>
+
+      <pre><code>// TypeScript
+interface Summarize {
+  summary(): string;
+}
+
+// Rust
+trait Summarize {
+    fn summary(&amp;self) -&gt; String;
+}</code></pre>
+
+      <p>
+        <code>trait</code> 本身不寫實作，只寫簽名。要讓某個型別真的擁有這個能力，得用 <code>impl TraitName for TypeName</code> 補上函式的內容 —— 這就是 TypeScript 的 <code>implements</code>：幫這個型別把貼紙貼上去，並寫出它怎麼做。
+      </p>
+
+      <h2>3. 你早就實作過 trait 了，只是沒人跟你說</h2>
+
+      <p>
+        打開你自己的 <code>hello_cli/src/errors.rs</code>：
+      </p>
+
+      <pre><code>impl fmt::Display for AppError {
+    fn fmt(&amp;self, f: &amp;mut fmt::Formatter) -&gt; fmt::Result {
+        match self {
+            AppError::Empty =&gt; write!(f, "空檔案"),
+            // ...
+        }
+    }
+}</code></pre>
+
+      <p>
+        這行 <code>impl fmt::Display for AppError</code>，就是「幫 <code>AppError</code> 貼上 <code>Display</code> 這張貼紙」。你當初是照著格式抄下來的，好讓 <code>println!("{}", error)</code> 能動。現在你知道這個格式的名字了：<code>impl TraitName for TypeName { 補上要求的函式 }</code>。<code>From&lt;std::io::Error&gt;</code> 也是同一件事，只是換了一張貼紙。
+      </p>
+
+      <h2>4. 泛型函式：同一份邏輯，不同型別</h2>
+
+      <p>
+        假設你想寫一個函式，找出一堆數字裡最大的那個：
+      </p>
+
+      <pre><code>fn largest(list: &amp;[i32]) -&gt; &amp;i32 {
+    let mut largest = &amp;list[0];
+    for item in list {
+        if item &gt; largest {
+            largest = item;
+        }
+    }
+    largest
+}</code></pre>
+
+      <p>
+        這個函式能動。但如果你之後想對一串 <code>&amp;str</code> 做一樣的事呢？邏輯完全一樣，只有型別不同。與其複製貼上一份幾乎一樣的函式，泛型讓你把型別也變成參數：
+      </p>
+
+      <pre><code>fn largest&lt;T&gt;(list: &amp;[T]) -&gt; &amp;T {
+    let mut largest = &amp;list[0];
+    for item in list {
+        if item &gt; largest {
+            largest = item;
+        }
+    }
+    largest
+}</code></pre>
+
+      <p>跑 <code>cargo build</code>。編譯器會擋下你：</p>
+
+      <pre><code>error[E0369]: binary operation `&gt;` cannot be applied to type `&amp;T`
+ --&gt; largest.rs:5:17
+  |
+5 |         if item &gt; largest {
+  |            ---- ^ ------- &amp;T
+  |            |
+  |            &amp;T
+  |
+help: consider restricting type parameter `T` with trait `PartialOrd`
+  |
+1 | fn largest&lt;T: std::cmp::PartialOrd&gt;(list: &amp;[T]) -&gt; &amp;T {
+  |             ++++++++++++++++++++++</code></pre>
+
+      <p>
+        光寫 <code>&lt;T&gt;</code>，你只跟編譯器承諾「這是某個型別」。編譯器沒辦法假設任何型別都能用 <code>&gt;</code> 比較 —— 因為確實不是每個型別都能。一塊石頭跟一個檔案路徑，你要怎麼比？它甚至在錯誤訊息裡把修法直接寫給你了。
+      </p>
+
+      <h2>5. Trait bound：把「能被比較」寫進型別的要求裡</h2>
+
+      <p>照著編譯器的建議，在角括號裡加上冒號和 trait 名稱：</p>
+
+      <div class="compare compare-before">
+        <div class="kicker">🔴 修改前 —— 沒有要求任何能力</div>
+        <pre><code>fn largest&lt;T&gt;(list: &amp;[T]) -&gt; &amp;T {</code></pre>
+      </div>
+
+      <div class="compare compare-after">
+        <div class="kicker">🟢 修改後 —— 這個 T 必須能被比較大小</div>
+        <pre><code>fn largest&lt;T: PartialOrd&gt;(list: &amp;[T]) -&gt; &amp;T {</code></pre>
+      </div>
+
+      <p>
+        <code>&lt;T: PartialOrd&gt;</code> 讀作「對任何有 <code>&gt;</code>/<code>&lt;</code> 的型別 <code>T</code>」。這叫做 <strong>trait bound</strong>（trait 約束）：把泛型從「任何型別都行」限縮成「任何型別都行，只要它有這個能力」。同一份函式，現在對兩種完全不同的型別都能用：
+      </p>
+
+      <pre><code>let numbers = vec![34, 50, 25, 100, 65];
+println!("{}", largest(&amp;numbers));        // 100
+
+let words = vec!["rust", "cargo", "compiler"];
+println!("{}", largest(&amp;words));          // rust</code></pre>
+
+      <p>
+        數字用 <code>&gt;</code> 比大小，字串用 <code>&gt;</code> 比字典順序 —— 兩者都實作了 <code>PartialOrd</code>，所以同一份程式碼原封不動地服務了兩種型別。這跟 TypeScript 的 <code>function largest&lt;T extends Comparable&gt;(list: T[]): T</code> 是同一個概念，<code>extends</code> 子句就是 TypeScript 的 trait bound。
+      </p>
+
+      <h2>6. 為什麼這對閱讀陌生程式碼有幫助</h2>
+
+      <p>
+        你已經在用滿足某個 trait bound 的型別了，只是沒注意到。<code>report.word_counts()</code> 回傳的 <code>BTreeMap&lt;String, usize&gt;</code>，它的 key 型別背後要求 <code>K: Ord</code> —— 這就是為什麼 <code>BTreeMap</code> 一定會照 key 排序：排序這件事本身需要「能比大小」這個能力，而 trait bound 就是編譯器確認這件事的地方。
+      </p>
+
+      <p>下次你在文件或別人的程式碼裡看到角括號，這樣拆解它：</p>
+
+      <table>
+        <thead>
+          <tr><th>片段</th><th>意思</th></tr>
+        </thead>
+        <tbody>
+          <tr><td><code>&lt;T&gt;</code></td><td>任何型別，但只能移動、存放，不能比較或印出</td></tr>
+          <tr><td><code>&lt;T: PartialOrd&gt;</code></td><td>任何能用 <code>&gt;</code>/<code>&lt;</code> 比較的型別</td></tr>
+          <tr><td><code>&lt;T: Display&gt;</code></td><td>任何能用 <code>{}</code> 印出的型別</td></tr>
+          <tr><td><code>&lt;T: Display + PartialOrd&gt;</code></td><td>同時要求兩種能力，用 <code>+</code> 疊加</td></tr>
+        </tbody>
+      </table>
+
+      <div class="callout tip">
+        💡 看到 <code>error[E0599]: no method named ... found</code> 或 <code>error[E0369]: binary operation ... cannot be applied</code>，先去找函式簽名上的 trait bound。十之八九是你手上的型別沒有滿足它。
+      </div>
+
+      <h2>7. 檢查你記得多少</h2>
+
+      <div class="quiz" data-mcq data-answer="2">
+        <div class="q">
+          <code>fn largest&lt;T&gt;(list: &amp;[T]) -&gt; &amp;T</code>（沒有 trait bound）編譯失敗，因為：
+        </div>
+        <div class="choices">
+          <button>&lt;T&gt; 只能用在單一元素的陣列上</button>
+          <button>編譯器不能假設任何型別都支援 &gt; 比較</button>
+          <button>&amp;[T] 這種寫法本身就不合法</button>
+          <button>函式忘了回傳值的所有權</button>
+        </div>
+        <div
+          class="feedback"
+          data-ok="答對了。&lt;T&gt; 只承諾「這是某個型別」，沒有承諾它能被比較。這正是 error[E0369] 在說的事。"
+          data-bad="再看一次編譯器指出的那一行：if item &gt; largest。它卡住的不是陣列，也不是回傳值，而是那個 &gt;。"
+        ></div>
+      </div>
+
+      <div class="quiz" data-mcq data-answer="3">
+        <div class="q">
+          <code>impl fmt::Display for AppError</code> 這一行程式碼在做什麼？
+        </div>
+        <div class="choices">
+          <button>宣告一個新的泛型函式</button>
+          <button>把 AppError 轉換成字串型別</button>
+          <button>幫 AppError 實作 Display 這個 trait</button>
+          <button>限制 AppError 只能用在泛型函式裡</button>
+        </div>
+        <div
+          class="feedback"
+          data-ok="答對了。impl TraitName for TypeName 就是「幫這個型別補上這個 trait 要求的函式」。你在很早的 Lesson 就寫過這個格式了，只是當時還沒給它名字。"
+          data-bad="再拆一次這行的三個部分：impl、Display、for AppError。中間那個字，前面學過它的名字是什麼？"
+        ></div>
+      </div>
+
+      <div class="quiz" data-mcq data-answer="1">
+        <div class="q">
+          <code>&lt;T: Display + PartialOrd&gt;</code> 裡的 <code>+</code> 是什麼意思？
+        </div>
+        <div class="choices">
+          <button>T 必須同時滿足兩個 trait bound</button>
+          <button>T 只要滿足其中一個 trait bound 就好</button>
+          <button>把兩個型別加總成一個新型別</button>
+          <button>Display 是 PartialOrd 的子 trait</button>
+        </div>
+        <div
+          class="feedback"
+          data-ok="答對了。+ 是疊加，不是二選一 —— T 必須同時能印出，也能比較大小，兩個條件都要滿足。"
+          data-bad="再想一下：&lt;T: Display&gt; 已經是一個完整的要求了。再加一個 trait 名稱，是放寬條件還是加嚴條件？"
+        ></div>
+      </div>
+
+      <div class="win">
+        <div class="kicker">這一課的成果</div>
+        你寫了一個只對數字有效的函式，看著它換成文字時編譯失敗，然後用一個 trait bound 讓同一份程式碼同時服務兩種型別。你也認出了自己早就寫過的 trait 實作 —— <code>impl Display for AppError</code>，只是這次知道它的名字。<br /><br />
+        下次讀到陌生的函式簽名，角括號裡的冒號不再是噪音：它是那個型別為了被這個函式接受，必須擁有的能力清單。<br /><br />
+        速查表：<a href="../reference/traits-and-generics.html">Trait 與泛型速查</a>。
+      </div>
+
+      <p class="source">
+        主要參考資料：
+        <a href="https://doc.rust-lang.org/book/ch10-01-syntax.html" target="_blank"
+          >The Rust Programming Language — 10.1 Generic Data Types</a
+        >、<a href="https://doc.rust-lang.org/book/ch10-02-traits.html" target="_blank"
+          >10.2 Traits</a
+        >（繁中版：<a href="https://rust-lang.tw/book-tw/ch10-02-traits.html" target="_blank">rust-lang.tw</a>）。<code>largest</code> 這個範例直接取自該章節，逐字驗證過編譯錯誤與輸出。
+      </p>
+
+      <nav class="lesson-links">
+        <a href="0027-stale-derived-state.html">&larr; 上一課：悄悄過期的欄位</a>
+        <a href="#">下一課：待訂 &rarr;</a>
+      </nav>
+
+      <p class="ask-agent">
+        卡住了、或有任何看不懂的地方，直接問我（你的 AI 教學助手）就好 —— 隨時可以打斷這個流程提問。
+      </p>
+    </main>
+  </body>
+</html>
