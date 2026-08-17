@@ -1,6 +1,7 @@
 mod errors;
 mod report;
 
+use crate::report::LineStats;
 use errors::AppError;
 use std::env;
 
@@ -57,7 +58,11 @@ fn run() -> Result<(), AppError> {
         println!("{}", report.content);
     }
 
-    let (empty, comment, code) = report.count_kinds();
+    let LineStats {
+        empty,
+        comment,
+        code,
+    } = report.line_stats();
     println!("空行 {} 行，註解 {} 行，程式碼 {} 行", empty, comment, code);
 
     Ok(())

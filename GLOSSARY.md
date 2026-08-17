@@ -256,3 +256,6 @@ A struct field whose value can be computed from another field — a line count b
 
 **Invariant（不變式）**:
 A rule about a value that must hold at all times — "`line_count` equals the number of lines in `content`", "this `Vec` is always sorted". Rust enforces invariants about *memory* (ownership, borrowing, exhaustive `match`) but has no way to express one about *meaning*. Those are held up by private fields, by methods that are the only way in, and by tests. A test that pins an invariant asserts a relationship (`a == b + c`), not a literal value — a test asserting the literal passes while the code is still wrong. See [[Derived field（衍生欄位）]].
+
+**Struct destructuring（結構解構）**:
+`let TypeName { field1, field2, .. } = expr;` — pulls named fields out of a struct into local variables, like TypeScript's `const { field1, field2 } = obj`. The type name is required (the compiler needs to know which struct). Use `..` to ignore fields you don't need. Same mechanism as tuple destructuring (`let (a, b) = ...`) but with names instead of positions — which means swapping the field order in the `let` pattern doesn't change semantics, because fields are matched by name, not position.

@@ -14,6 +14,13 @@ pub enum LineKind {
     Code,
 }
 
+#[derive(PartialEq, Debug)]
+pub struct LineStats {
+    pub empty: usize,
+    pub comment: usize,
+    pub code: usize,
+}
+
 impl Report {
     pub fn new(filename: &str, content: String) -> Report {
         Report {
@@ -41,26 +48,30 @@ impl Report {
         }
     }
 
-    pub fn count_kinds(&self) -> (usize, usize, usize) {
-        let empty_counts = self
+    pub fn line_stats(&self) -> LineStats {
+        let empty = self
             .content
             .lines()
             .filter(|line| matches!(Report::classify_line(line), LineKind::Empty))
             .count();
 
-        let comment_counts = self
+        let comment = self
             .content
             .lines()
             .filter(|line| matches!(Report::classify_line(line), LineKind::Comment))
             .count();
 
-        let code_counts = self
+        let code = self
             .content
             .lines()
             .filter(|line| matches!(Report::classify_line(line), LineKind::Code))
             .count();
 
-        (empty_counts, comment_counts, code_counts)
+        LineStats {
+            empty,
+            comment,
+            code,
+        }
     }
 
     pub fn line_count(&self) -> usize {
@@ -107,11 +118,17 @@ mod tests {
     }
 
     #[test]
-    fn count_kinds() {
+    fn line_stats() {
         let report = Report::new("test.txt", "code\n\n// comment\n".to_string());
-        let counts = report.count_kinds();
 
-        assert_eq!(counts, (1, 1, 1));
+        assert_eq!(
+            report.line_stats(),
+            LineStats {
+                empty: 1,
+                comment: 1,
+                code: 1
+            }
+        );
     }
 
     #[test]
@@ -125,11 +142,14 @@ mod tests {
     }
 
     #[test]
-    fn summary_agrees_with_count_kinds() {
+    fn summary_agrees_with_line_stats() {
         let mut report = Report::new("t.txt", "a\nb\nc\n".to_string());
         report.add_title();
 
-        let (empty, comment, code) = report.count_kinds();
-        assert_eq!(report.line_count(), empty + comment + code);
+        let line_stats = report.line_stats();
+        assert_eq!(
+            report.line_count(),
+            line_stats.empty + line_stats.comment + line_stats.code
+        );
     }
 }

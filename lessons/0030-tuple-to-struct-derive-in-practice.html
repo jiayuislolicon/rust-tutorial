@@ -1,0 +1,355 @@
+<!doctype html>
+<html lang="zh-Hant">
+  <head>
+    <meta charset="UTF-8" />
+    <title>Lesson 30 · Tuple 變 struct：把 #[derive] 裝進你的專案</title>
+    <link rel="stylesheet" href="../assets/style.css" />
+    <script src="../assets/quiz.js"></script>
+  </head>
+  <body>
+    <main>
+      <div class="kicker">Lesson 0030 · Rust · CLI 工具養成路線</div>
+      <h1>Tuple 變 struct：把 #[derive] 裝進你的專案</h1>
+      <div class="byline">
+        <strong>學習目標：</strong>你的
+        <code>count_kinds()</code> 回傳一個 bare tuple，三個數字全靠位置來區分。你會親自證明這種寫法能出錯、卻不會被編譯器攔住，然後用一個帶
+        <code>#[derive]</code> 的 struct 取代它，把「第幾個是什麼」寫進型別裡。
+      </div>
+
+      <h2>1. 位置決定意義，沒人幫你記</h2>
+
+      <p>
+        打開 <code>hello_cli/src/report.rs</code>，找到
+        <code>count_kinds</code> 回傳的那一行：
+      </p>
+
+      <pre><code>pub fn count_kinds(&amp;self) -&gt; (usize, usize, usize) {
+    // ...
+    (empty_counts, comment_counts, code_counts)
+}</code></pre>
+
+      <p>
+        現在假設你手滑，把回傳值的順序打亂了：
+      </p>
+
+      <pre><code>(code_counts, comment_counts, empty_counts)</code></pre>
+
+      <p>
+        跑一下 <code>cargo test</code>：全部通過。來看看那個測試為什麼抓不到：
+      </p>
+
+      <pre><code>let counts = report.count_kinds();
+assert_eq!(counts, (1, 1, 1));</code></pre>
+
+      <p>
+        三個值剛好都是 1。不管你怎麼交換順序，<code>(1, 1, 1)</code>
+        永遠等於自己。測試抓不到，不代表呼叫端就安全。在
+        <code>main.rs</code> 裡你寫的是：
+      </p>
+
+      <pre><code>let (empty, comment, code) = report.count_kinds();</code></pre>
+
+      <p>
+        這些名字是<strong>呼叫端自己取的</strong>。對型別系統來說，這只是三個
+        <code>usize</code> 排成一排——它不知道第一個應該代表「空行」。順序寫反了也不會報錯；錯誤的數字會被靜靜地塞進錯誤的變數名裡。
+      </p>
+
+      <div class="callout warning">
+        ⚠️ 函式回傳多個同型別的值、卻靠位置區分意義，這是一種編譯器幫不了你的 bug。手滑交換順序時，它不會有任何意見。
+      </div>
+
+      <h2>2. 命名欄位：把位置資訊寫進型別裡</h2>
+
+      <p>
+        解法是把位置資訊寫進型別：用 struct，讓每個欄位有自己的名字。
+      </p>
+
+      <pre><code>#[derive(Debug, PartialEq)]
+pub struct LineStats {
+    pub empty: usize,
+    pub comment: usize,
+    pub code: usize,
+}</code></pre>
+
+      <p>
+        這個 struct 需要 <code>#[derive(Debug, PartialEq)]</code>——Lesson 29
+        學過的那兩個。<code>Debug</code> 讓 <code>{:?}</code>
+        可用，測試失敗時能印出結構；<code>PartialEq</code> 讓
+        <code>==</code> 可用，<code>assert_eq!</code> 才能比較兩個
+        struct。少了任何一個，等一下的測試都編不過。
+      </p>
+
+      <p>
+        <code>PartialEq</code> 能 derive，是因為三個欄位都是
+        <code>usize</code>，而 <code>usize</code> 本身已經有
+        <code>PartialEq</code>。這就是 Lesson 29 提過的規則：型別裡每個欄位也必須實作那個 trait，derive 才合法。
+      </p>
+
+      <h2>3. 把 <code>count_kinds</code> 換成 <code>line_stats</code></h2>
+
+      <p>
+        先把函式簽名改成回傳 <code>LineStats</code>，而不是 tuple：
+      </p>
+
+      <div class="compare compare-before">
+        <div class="kicker">🔴 修改前</div>
+        <pre><code>pub fn count_kinds(&amp;self) -&gt; (usize, usize, usize) {
+    // ...
+    (empty_counts, comment_counts, code_counts)
+}</code></pre>
+      </div>
+
+      <div class="compare compare-after">
+        <div class="kicker">🟢 修改後</div>
+        <pre><code>pub fn line_stats(&amp;self) -&gt; LineStats {
+    let empty = self.content.lines()
+        .filter(|line| matches!(Report::classify_line(line), LineKind::Empty))
+        .count();
+
+    let comment = self.content.lines()
+        .filter(|line| matches!(Report::classify_line(line), LineKind::Comment))
+        .count();
+
+    let code = self.content.lines()
+        .filter(|line| matches!(Report::classify_line(line), LineKind::Code))
+        .count();
+
+    LineStats { empty, comment, code }
+}</code></pre>
+      </div>
+
+      <p>
+        回傳的 <code>LineStats { empty, comment, code }</code>
+        用了欄位縮寫：變數名稱和欄位名稱相同時，<code>empty: empty</code>
+        可以縮成 <code>empty</code>。你在
+        <code>Report::new</code> 裡用過同樣的寫法——<code>content</code>
+        那一行就是。
+      </p>
+
+      <h2>4. 測試：struct literal 當預期值</h2>
+
+      <p>
+        把測試改成這樣：
+      </p>
+
+      <pre><code>#[test]
+fn line_stats() {
+    let report = Report::new("test.txt", "code\n\n// comment\n".to_string());
+    let stats = report.line_stats();
+
+    assert_eq!(
+        stats,
+        LineStats {
+            empty: 1,
+            comment: 1,
+            code: 1,
+        }
+    );
+}</code></pre>
+
+      <p>
+        現在你可以看著 <code>empty: 1, comment: 1, code: 1</code>
+        確切知道每個數字指的是什麼。假如 <code>line_stats()</code>
+        裡面有人把 <code>empty</code> 和 <code>code</code>
+        寫反，編譯器不會擋——但測試資料一旦不同（比如
+        <code>empty: 2, comment: 0, code: 3</code>），失敗訊息會直接指出哪個欄位對不上。
+      </p>
+
+      <p>另一個測試也更直觀了：</p>
+
+      <pre><code>#[test]
+fn summary_agrees_with_line_stats() {
+    let mut report = Report::new("t.txt", "a\nb\nc\n".to_string());
+    report.add_title();
+
+    let stats = report.line_stats();
+    assert_eq!(report.line_count(), stats.empty + stats.comment + stats.code);
+}</code></pre>
+
+      <p>
+        <code>stats.empty + stats.comment + stats.code</code>
+        讀起來像一句話。<code>counts.0 + counts.1 + counts.2</code>
+        則得對照位置編號才知道每個數字是什麼。
+      </p>
+
+      <h2>5. 更新 <code>main.rs</code></h2>
+
+      <p>
+        <code>main.rs</code> 也要跟著改。原本用 tuple destructuring 取值：
+      </p>
+
+      <div class="compare compare-before">
+        <div class="kicker">🔴 修改前</div>
+        <pre><code>let (empty, comment, code) = report.count_kinds();
+println!("空行 {} 行，註解 {} 行，程式碼 {} 行", empty, comment, code);</code></pre>
+      </div>
+
+      <div class="compare compare-after">
+        <div class="kicker">🟢 修改後</div>
+        <pre><code>let stats = report.line_stats();
+println!(
+    "空行 {} 行，註解 {} 行，程式碼 {} 行",
+    stats.empty, stats.comment, stats.code
+);</code></pre>
+      </div>
+
+      <p>
+        印出來的結果跟以前一樣，但保障不同了。如果有人改了
+        <code>LineStats</code> 的欄位名稱，所有用到它的地方——包括這裡——都會報
+        <code>error[E0609]: no field ... on type LineStats</code>。位置對換不再是沉默的 bug，而是編譯器會直接擋下來的錯誤。
+      </p>
+
+      <p>跑 <code>cargo test</code> 確認全部通過，然後繼續看 derive 的限制。</p>
+
+      <h2>6. 不是每個型別都能 derive 所有 trait</h2>
+
+      <p>
+        <code>LineStats</code> 的三個欄位都是
+        <code>usize</code>，derive 順利通過。但並非每個型別都這麼配合。打開
+        <code>hello_cli/src/errors.rs</code>，<code>AppError</code>
+        目前沒有任何 derive。先加上 <code>Debug</code> 試試：
+      </p>
+
+      <pre><code>#[derive(Debug)]
+pub enum AppError {
+    ReadFailed(std::io::Error),
+    Empty,
+    UnknownFlag(String),
+    MissingValue(String),
+    BadNumber(std::num::ParseIntError),
+}</code></pre>
+
+      <p>
+        編譯通過——<code>io::Error</code>、<code>String</code>、<code>ParseIntError</code>
+        各自都有 <code>Debug</code>，所以整個 enum 也能 derive。加完之後你可以用
+        <code>format!("{:?}", error)</code> 印出任何一個 variant 的結構，方便除錯。
+      </p>
+
+      <p>
+        同樣的邏輯，<code>PartialEq</code> 應該也行吧？試著加上去：
+      </p>
+
+      <pre><code>#[derive(Debug, PartialEq)]
+pub enum AppError { ... }</code></pre>
+
+      <p>
+        編譯器拒絕了：
+      </p>
+
+      <pre><code>error[E0277]: can't compare `std::io::Error` with `std::io::Error`
+   --> src/errors.rs
+    |
+    | #[derive(Debug, PartialEq)]
+    |                 ^^^^^^^^^ the trait `PartialEq` is not implemented for `std::io::Error`</code></pre>
+
+      <p>
+        問題出在 <code>io::Error</code>：它沒有
+        <code>PartialEq</code>。兩個「找不到檔案」的錯誤實例不應該被當作相等——它們可能指的是不同的檔案、不同的瞬間。一個欄位缺了這個 trait，整個 enum 就跟著 derive 不了。
+      </p>
+
+      <p>
+        所以 <code>AppError</code> 最終只留
+        <code>#[derive(Debug)]</code>。這和 <code>Display</code>
+        不能 derive（Lesson 29）是<strong>同一條規則的兩面</strong>：derive
+        只能產生「從結構就能唯一決定的實作」。某個欄位拿不出那份實作，整個型別就無法自動取得它。
+      </p>
+
+      <h2>7. 看看你記得多少</h2>
+
+      <div class="quiz" data-mcq data-answer="2">
+        <div class="q">
+          <code>count_kinds()</code> 回傳
+          <code>(usize, usize, usize)</code>，呼叫端用
+          <code>let (empty, comment, code) = ...</code> 接住。如果函式裡面把
+          empty 和 code 的順序寫反，會發生什麼？
+        </div>
+        <div class="choices">
+          <button>編譯失敗——型別不對</button>
+          <button>編譯通過——三個 usize 型別相同，編譯器分不出差異</button>
+          <button>執行時 panic</button>
+          <button>只有在 --release 模式才會出事</button>
+        </div>
+        <div
+          class="feedback"
+          data-ok="答對了。tuple 裡三個位置全是 usize，交換順序不改變型別——編譯器無從區分，bug 就這樣靜靜地留了下來。"
+          data-bad="再想一下… tuple 裡三個元素的型別全是 usize。交換兩個位置之後，整個 tuple 的型別有變嗎？"
+        ></div>
+      </div>
+
+      <div class="quiz" data-mcq data-answer="3">
+        <div class="q">
+          改用 <code>LineStats</code> struct 之後，<code>assert_eq!</code>
+          能運作是因為它同時需要哪兩個 trait？
+        </div>
+        <div class="choices">
+          <button>Display 和 Clone</button>
+          <button>Copy 和 Default</button>
+          <button>PartialEq 和 Debug</button>
+          <button>Eq 和 Hash</button>
+        </div>
+        <div
+          class="feedback"
+          data-ok="答對了。PartialEq 提供 ==，Debug 讓失敗時能把兩邊的值印出來。缺任何一個，assert_eq! 都編不過。"
+          data-bad="再看一次 Lesson 29… assert_eq! 需要判斷相等（哪個 trait？），也需要在不相等時印出兩邊的值（哪個 trait？）。"
+        ></div>
+      </div>
+
+      <div class="quiz" data-mcq data-answer="1">
+        <div class="q">
+          <code>AppError</code> 能 derive <code>Debug</code> 卻不能 derive
+          <code>PartialEq</code>，是因為：
+        </div>
+        <div class="choices">
+          <button>其中一個欄位（io::Error）有 Debug 但沒有 PartialEq</button>
+          <button>enum 不能同時 derive 兩個 trait</button>
+          <button>PartialEq 只能手寫，永遠不能 derive</button>
+          <button>Debug 不是一個真正的 trait</button>
+        </div>
+        <div
+          class="feedback"
+          data-ok="答對了。derive 的前提是每個欄位都具備那個 trait。io::Error 有 Debug，但沒有 PartialEq，所以整個 enum 也無法 derive PartialEq。"
+          data-bad="再看一次… LineKind 剛成功 derive 了 PartialEq，所以 PartialEq 當然可以 derive。差別在 AppError 的某個欄位缺了什麼 trait。"
+        ></div>
+      </div>
+
+      <div class="win">
+        <div class="kicker">這一課的成果</div>
+        你把一個靠位置辨認的 tuple 換成了有名字的 struct，加上
+        <code>#[derive(Debug, PartialEq)]</code>
+        讓它能直接用在 <code>assert_eq!</code>
+        裡。你也親眼看到了 derive 的限制：<code>AppError</code> 裡的
+        <code>io::Error</code> 擋住了
+        <code>PartialEq</code>，因為 derive 只能在每個欄位也具備那個 trait 的前提下產生 impl。<br /><br />
+        回頭看整條路：Lesson 28 教你讀 trait bound（<code
+          >T: PartialEq + Debug</code
+        >），Lesson 29 教你用 <code>#[derive]</code> 把那些 trait
+        裝上去。這一課把兩件事接在一起，直接改進了你自己的程式碼。<br /><br />
+        速查表：<a href="../reference/derive-and-attributes.html">#[derive] 與 attribute</a>、<a href="../reference/structs-and-custom-types.html">struct 與自訂型別</a>。
+      </div>
+
+      <p class="source">
+        主要參考資料：<a
+          href="https://doc.rust-lang.org/book/appendix-03-derivable-traits.html"
+          target="_blank"
+          >The Rust Programming Language — Appendix C: Derivable Traits</a
+        >、<a
+          href="https://doc.rust-lang.org/book/ch05-01-defining-structs.html"
+          target="_blank"
+          >Ch 5.1 — Defining and Instantiating Structs</a
+        >。所有修改從 <code>hello_cli/src/report.rs</code> 實際操作驗證。
+      </p>
+
+      <nav class="lesson-links">
+        <a href="0029-derive-and-attribute-macros.html"
+          >&larr; 上一課：#[derive] 與屬性</a
+        >
+        <a href="#">下一課：待訂 &rarr;</a>
+      </nav>
+
+      <p class="ask-agent">
+        卡住了、或有任何看不懂的地方，直接問我（你的 AI 教學助手）就好 ——
+        隨時可以打斷這個流程提問。
+      </p>
+    </main>
+  </body>
+</html>
