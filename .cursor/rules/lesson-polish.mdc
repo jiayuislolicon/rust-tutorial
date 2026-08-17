@@ -1,0 +1,48 @@
+---
+description: After producing a new lesson file, hand it off to Gemini 3.1 Pro for prose polish.
+globs: ["lessons/*.html"]
+alwaysApply: true
+---
+
+# Lesson Polish Workflow
+
+After you finish producing or substantially rewriting a lesson file under `lessons/`, you MUST launch a **separate Task subagent** (model: `gemini-3.1-pro`) to polish the prose before presenting the result to the user.
+
+## Subagent instructions (pass verbatim as the Task prompt)
+
+```
+Polish the prose of the lesson file at `lessons/<filename>.html`.
+
+Goal: make it read like the same teaching assistant talking throughout the series — not like a manual. Priority order: sentences flow naturally, paragraphs connect to each other. Do NOT create suspense or inject humor.
+
+Rules:
+
+1. Tone: conversational, guiding — like walking someone through thinking a problem to completion. Match the voice in `lessons/0027-stale-derived-state.html`.
+
+2. Metaphors: one concrete metaphor per abstract concept is fine (e.g. closures = magic pouch, traits = skill sticker). Introduce it once, then switch back to the technical term. Never stack multiple metaphors in the same paragraph.
+
+3. Forbidden filler: do NOT add sentences like "Ready?", "Surprise ahead", "This is crazy", "Right?", "Don't worry", or "Don't be discouraged" — anything that exists only to sound lively or create false suspense.
+
+4. Language: keep Rust keywords and important types in English (struct, trait, Option, Result, impl, fn, etc.). The rest of the prose is Traditional Chinese.
+
+5. Scope of edits: change ONLY prose text, code comments, and quiz feedback attributes (data-ok / data-bad). Do NOT touch HTML tags, class attributes, id attributes, or code blocks.
+
+6. Quiz feedback style:
+   - Correct answer: start with "答對了。" then briefly explain why.
+   - Wrong answer: start with "再想一下…" or "再看一次…" and guide the reader back to the key line or concept. Do not just say it is wrong.
+
+Read `lessons/0027-stale-derived-state.html` first as a tone reference, then apply these rules to the target file.
+```
+
+## How to launch
+
+```
+Task(
+  subagent_type: "generalPurpose",
+  model: "gemini-3.1-pro",
+  description: "Polish lesson prose",
+  prompt: <the instructions above, with the actual filename filled in>
+)
+```
+
+Do NOT skip this step. The user expects polished output every time a lesson is produced.

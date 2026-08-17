@@ -93,7 +93,7 @@ A `&str` pointing at part of an existing string. No data is copied, so it is a b
 A floating-point number type (can hold a decimal point), as opposed to integer types like `i32`. Used whenever a value needs fractional precision (e.g. a temperature conversion).
 
 **Debug format (`{:?}`)**:
-A `println!`/`format!` placeholder that prints a value's internal structure (e.g. a whole `Vec`'s contents), useful for debugging or summarizing composite data. Contrast with `{}`, which requires the type to implement plain `Display` formatting and can't print a `Vec` directly.
+A `println!`/`format!` placeholder that prints a value's internal structure (e.g. a whole `Vec`'s contents), useful for debugging or summarizing composite data. Contrast with `{}`, which requires the type to implement plain `Display` formatting and can't print a `Vec` directly. Standard library types like `Vec` already implement `Debug`; a type you defined yourself needs `#[derive(Debug)]` (or a hand-written `impl`) before `{:?}` will compile for it. See [[`#[derive(...)]`]].
 
 **`env::args()`**:
 Returns an iterator over the program's command-line arguments. `.collect()` turns it into a `Vec<String>`. `args[0]` is always the program's own path — the first real user-supplied argument is `args[1]`.
@@ -158,11 +158,17 @@ Marks an item (struct, function, enum, ...) as visible outside the file/module i
 **`use`**:
 Brings a path into the current scope so it can be written short instead of in full, e.g. `use report::Report;` lets you write `Report` instead of `report::Report`. Purely a naming convenience — it doesn't change what's compiled or what's visible, that's [[`mod`]] and [[`pub`]]'s job. `crate::` at the start of a path means "starting from the project root."
 
+**Attribute (`#[...]`)**:
+A note attached to the item directly below it, read by the compiler before compilation — not code that runs when the program executes. `#[test]` and `#[cfg(test)]` are both attributes; so is [[`#[derive(...)]`]], which is the one kind that writes code for you instead of just marking or conditionally including an item.
+
 **`#[test]`**:
 Marks a function as a test — `cargo test` runs every function tagged with it and reports pass/fail. An ordinary function isn't executed automatically; this attribute is what makes it happen.
 
 **`#[cfg(test)]`**:
 Compiles the item below it only when running `cargo test`. Placed above `mod tests { ... }` so test code never ships inside the binary built by `cargo build`/`cargo run`.
+
+**`#[derive(...)]`**:
+An [[Attribute (`#[...]`)]] that writes an `impl Trait for Type` block for you, following one fixed mechanical rule per trait — e.g. `#[derive(PartialEq)]` on an enum means "equal if same variant, and any data inside it is also equal." Only works when the fields alone determine that one rule; `Display` can't be derived because the exact text to print is a human choice, which is why `impl fmt::Display for AppError` in `hello_cli/src/errors.rs` is hand-written. A struct or enum can only derive a trait if every one of its own fields also implements that trait. See [[Trait]].
 
 **`assert_eq!` / `assert!`**:
 Test-time checks. `assert_eq!(a, b)` panics if `a != b`, printing both actual values. `assert!(cond)` panics if `cond` is `false`. A panic inside a `#[test]` function doesn't crash `cargo test` as a whole — that one test is marked `FAILED` and the rest still run.

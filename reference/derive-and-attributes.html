@@ -1,0 +1,80 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title>Reference · #[derive] and attributes</title>
+    <link rel="stylesheet" href="../assets/style.css" />
+  </head>
+  <body>
+    <main>
+      <div class="kicker">Reference · Rust</div>
+      <h1>#[derive] and attributes</h1>
+      <div class="byline">
+        From <a href="../lessons/0029-derive-and-attribute-macros.html">Lesson 29</a>. <strong>Attribute = a note attached to the item below it, read by the compiler. #[derive(...)] is the kind of attribute that generates real impl blocks.</strong>
+      </div>
+
+      <h2>Three attributes you're already using</h2>
+
+      <table>
+        <thead>
+          <tr><th>Attribute</th><th>What it actually does</th></tr>
+        </thead>
+        <tbody>
+          <tr><td><code>#[test]</code></td><td>marks a function for the test runner to call</td></tr>
+          <tr><td><code>#[cfg(test)]</code></td><td>includes the item below only when compiling for <code>cargo test</code></td></tr>
+          <tr><td><code>#[derive(Trait, ...)]</code></td><td>writes one or more <code>impl Trait for Type</code> blocks, mechanically</td></tr>
+        </tbody>
+      </table>
+
+      <h2>What derive produces is the same shape as a hand-written impl</h2>
+
+      <pre><code>#[derive(Debug, PartialEq)]
+pub enum LineKind {
+    Empty,
+    Comment,
+    Code,
+}
+
+// equivalent to writing, by hand:
+// impl Debug for LineKind { ... }
+// impl PartialEq for LineKind { ... }</code></pre>
+
+      <p>
+        Without it, <code>assert_eq!(a, b)</code> fails with two separate errors: <code>error[E0369]</code> (no <code>PartialEq</code>, can't compare) and <code>error[E0277]</code> (no <code>Debug</code>, can't print the value if the check fails).
+      </p>
+
+      <h2>Common derivable traits</h2>
+
+      <table>
+        <thead>
+          <tr><th>Trait</th><th>What deriving it gives you</th></tr>
+        </thead>
+        <tbody>
+          <tr><td><code>Debug</code></td><td><code>{:?}</code> printing</td></tr>
+          <tr><td><code>PartialEq</code></td><td><code>==</code> / <code>!=</code>, and therefore <code>assert_eq!</code></td></tr>
+          <tr><td><code>Eq</code></td><td>a stricter equality promise than PartialEq — required for a HashMap key</td></tr>
+          <tr><td><code>Clone</code></td><td>a <code>.clone()</code> method</td></tr>
+          <tr><td><code>Copy</code></td><td>copied on assignment instead of moved — only if every field is also Copy</td></tr>
+          <tr><td><code>Default</code></td><td>a <code>Type::default()</code> constructor</td></tr>
+          <tr><td><code>Hash</code></td><td>usable as a HashMap key</td></tr>
+        </tbody>
+      </table>
+
+      <h2>Why some traits can't be derived</h2>
+
+      <p>
+        <code>#[derive]</code> only works when the fields alone determine one mechanical answer. <code>Display</code> can't be derived because the exact text to print is a human choice, not something the fields decide — which is why <code>impl fmt::Display for AppError</code> in <code>hello_cli/src/errors.rs</code> is hand-written.
+      </p>
+
+      <div class="callout tip">
+        💡 <code>error[E0277]: the trait bound ... is not satisfied</code> on a <code>#[derive(Something)]</code> line usually means one of the type's own fields doesn't implement that trait — not that derive itself is broken.
+      </div>
+
+      <p class="source">
+        Source: <a href="https://doc.rust-lang.org/book/appendix-03-derivable-traits.html" target="_blank"
+          >TRPL Appendix C: Derivable Traits</a
+        >. Related: <a href="traits-and-generics.html">Traits and generics reference</a>.
+      </p>
+    </main>
+  </body>
+</html>

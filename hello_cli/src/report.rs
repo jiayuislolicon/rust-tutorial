@@ -7,6 +7,7 @@ pub struct Report {
     pub content: String,
 }
 
+#[derive(PartialEq, Debug)]
 pub enum LineKind {
     Empty,
     Comment,
@@ -92,20 +93,17 @@ mod tests {
 
     #[test]
     fn classify_line_empty() {
-        assert!(matches!(Report::classify_line(""), LineKind::Empty));
+        assert_eq!(Report::classify_line(""), LineKind::Empty);
     }
 
     #[test]
     fn classify_line_comment() {
-        assert!(matches!(Report::classify_line("// hi"), LineKind::Comment));
+        assert_eq!(Report::classify_line("// hi"), LineKind::Comment);
     }
 
     #[test]
     fn classify_line_code() {
-        assert!(matches!(
-            Report::classify_line("let x = 1;"),
-            LineKind::Code
-        ));
+        assert_eq!(Report::classify_line("let x = 1;"), LineKind::Code);
     }
 
     #[test]

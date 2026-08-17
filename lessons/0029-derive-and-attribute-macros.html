@@ -1,0 +1,443 @@
+<!doctype html>
+<html lang="zh-Hant">
+  <head>
+    <meta charset="UTF-8" />
+    <title>Lesson 29 · 編譯器能產生的 impl，就別手寫：#[derive]</title>
+    <link rel="stylesheet" href="../assets/style.css" />
+    <script src="../assets/quiz.js"></script>
+  </head>
+  <body>
+    <main>
+      <div class="kicker">Lesson 0029 · Rust · CLI 工具養成路線</div>
+      <h1>編譯器能產生的 impl，就別手寫：#[derive]</h1>
+      <div class="byline">
+        <strong>學習目標：</strong
+        >你的測試避開了一種更短的寫法，原因不是偷懶。你會找出那個原因，用一行修好它，並把從
+        Lesson 20 起就一直在寫的 <code>#[...]</code> 正式命名。
+      </div>
+
+      <h2>1. 你自己的測試裡，藏著一個繞路寫法</h2>
+
+      <p>
+        打開 <code>hello_cli/src/report.rs</code>，看看
+        <code>classify_line</code> 的三個測試：
+      </p>
+
+      <pre><code>#[test]
+fn classify_line_empty() {
+    assert!(matches!(Report::classify_line(""), LineKind::Empty));
+}</code></pre>
+
+      <p>
+        前面學過更短的相等檢查：<code>assert_eq!(a, b)</code
+        >。試著把這個測試改成那種寫法：
+      </p>
+
+      <pre><code>assert_eq!(Report::classify_line(""), LineKind::Empty);</code></pre>
+
+      <p>跑一次 <code>cargo test</code>——編譯器拒絕了：</p>
+
+      <pre><code>error[E0369]: binary operation `==` cannot be applied to type `report::LineKind`
+help: consider annotating `report::LineKind` with `#[derive(PartialEq)]`
+
+error[E0277]: `report::LineKind` doesn't implement `Debug`
+   = note: add `#[derive(Debug)]` to `report::LineKind` or manually `impl Debug for report::LineKind`</code></pre>
+
+      <p>
+        兩個錯誤看起來分開，其實各指出一個缺口：<code>LineKind</code> 既不能做
+        <code>==</code>，也不能用 <code>{:?}</code> 印出來。你原本的
+        <code>matches!(expr, Pattern)</code> 走的是模式比對：它拿
+        <code>Report::classify_line("")</code> 的結果去對
+        <code>LineKind::Empty</code> 這個 pattern，對得上就回傳
+        <code>true</code>。整個過程沒有相等比較，也不需要把值印出來。
+      </p>
+
+      <p>
+        <code>assert_eq!(a, b)</code> 就不一樣了。它得先用
+        <code>a == b</code> 判斷相等；如果不相等，還得把兩邊用
+        <code>{:?}</code> 印出來，讓你看見差在哪。因此它同時要求兩個
+        trait：<code>PartialEq</code>（提供 <code>==</code>）和
+        <code>Debug</code>（提供
+        <code>{:?}</code>）。這一課要學的，就是把這兩樣用最快的方式補上。
+      </p>
+
+      <h2>2. <code>#[...]</code> 到底是什麼</h2>
+
+      <p>從 Lesson 20 起，你就一直在寫這種行——只是還沒替這套語法取名字：</p>
+
+      <pre><code>#[test]
+fn classify_line_empty() { ... }
+
+#[cfg(test)]
+mod tests { ... }</code></pre>
+
+      <p>
+        <code>#[...]</code> 叫做
+        <strong>attribute</strong
+        >（屬性）。你可以把它想成一張便利貼，貼在正下方那一項上面；編譯器在編譯時讀它，不是程式跑起來才執行的程式碼。<code
+          >#[test]</code
+        >
+        告訴 <code>cargo test</code> 的執行器：「呼叫這個函式，看它會不會
+        panic」。<code>#[cfg(test)]</code>
+        告訴編譯器：「只有為測試編譯時，才把下面這項收進來」。這兩行都不會在執行時自己做事；它們改的是編譯器怎麼對待被貼著的那一項。
+      </p>
+
+      <p>
+        同一套語法還有第三種用法。<code>#[derive(...)]</code>
+        既不標記某一項，也不決定要不要編譯——它<strong>直接幫你寫程式碼</strong>。
+      </p>
+
+      <h2>
+        3. <code>#[derive(...)]</code>：自動產生 Trait 的 <code>impl</code>
+      </h2>
+
+      <p>
+        它寫出來的東西，形狀你其實見過。打開
+        <code>hello_cli/src/errors.rs</code>：
+      </p>
+
+      <pre><code>impl fmt::Display for AppError {
+    fn fmt(&amp;self, f: &amp;mut fmt::Formatter) -&gt; fmt::Result {
+        match self {
+            AppError::Empty =&gt; write!(f, "empty file"),
+            // ...
+        }
+    }
+}</code></pre>
+
+      <p>
+        <code>#[derive(PartialEq)]</code>
+        的意思是：請編譯器在編譯時，自動替這個型別產生
+        <code>PartialEq</code> 的實作。
+      </p>
+
+      <p>概念上，它就像我們自己寫了：</p>
+
+      <pre><code>impl PartialEq for LineKind {
+    // Rust 自動產生比較邏輯
+}</code></pre>
+
+      <p>
+        <code>PartialEq</code> 的比較規則是：<strong
+          >兩個值必須是同一個 variant，而且如果 variant
+          帶有資料，那些資料也必須相等。</strong
+        >
+      </p>
+
+      <p>例如：</p>
+
+      <pre><code>
+LineKind::Empty == LineKind::Empty // true
+LineKind::Empty == LineKind::Code // false
+      </code></pre>
+
+      <p>把它加在 <code>LineKind</code> 上面：</p>
+
+      <div class="compare compare-before">
+        <div class="kicker">🔴 修改前 —— 沒宣告任何能力</div>
+        <pre><code>pub enum LineKind {
+    Empty,
+    Comment,
+    Code,
+}</code></pre>
+      </div>
+
+      <div class="compare compare-after">
+        <div class="kicker">🟢 修改後 —— 能比較、也能印出</div>
+        <pre><code>#[derive(Debug, PartialEq)]
+pub enum LineKind {
+    Empty,
+    Comment,
+    Code,
+}</code></pre>
+      </div>
+
+      <p>
+        再跑 <code>cargo test</code>，這次能編譯也能通過。<code
+          >assert_eq!(Report::classify_line(""), LineKind::Empty)</code
+        >
+        的寫法，跟用在 <code>i32</code> 上完全一樣。
+      </p>
+
+      <p>這裡有兩個 trait，各自對應 <code>assert_eq!</code> 的一個需求：</p>
+
+      <ul>
+        <li>
+          <code>PartialEq</code>：讓
+          <code>==</code> 可用，所以能判斷兩邊是不是相等。
+        </li>
+        <li>
+          <code>Debug</code>：讓
+          <code>{:?}</code> 可用，所以在檢查失敗時能把兩邊印出來。
+        </li>
+      </ul>
+
+      <p>
+        兩個缺一不可；拿掉任何一個都會回到剛才的編譯錯誤。只加
+        <code>#[derive(PartialEq)]</code> 仍然編不過——<code
+          >error[E0277]: doesn't implement Debug</code
+        >——因為
+        <code>assert_eq!</code>
+        展開成真正的程式碼時，會把失敗時要印出的格式化邏輯也一併編進去。就算這次測試實際上會通過，編譯器仍然要求那段印出的程式碼必須能編譯。
+      </p>
+
+      <p>
+        所以這裡的
+        <code>Debug</code>
+        不是裝飾；沒有它，失敗的斷言根本讀不懂。你可以自己確認：<code
+          >format!("{:?}", LineKind::Comment)</code
+        >
+        印出 <code>Comment</code>——推導出來的
+        <code>Debug</code> 在這個例子裡，就是把 variant 的名字印出來。
+      </p>
+
+      <h2>4. 不是每種 trait 都能 derive</h2>
+
+      <p>
+        回到 <code>impl fmt::Display for AppError</code>。為什麼這一份要手寫，而
+        <code>PartialEq</code> 和 <code>Debug</code> 可以讓編譯器產生？
+      </p>
+
+      <p>
+        <code>#[derive]</code> 只能用在「從型別的結構就能唯一決定實作方式」的
+        trait 上——編譯器必須能照一套沒有歧義的規則，把整份
+        <code>impl</code> 機械地寫出來。比較兩個
+        <code>LineKind</code>，自然的規則就是「同一個
+        variant（以及裡面的資料相同）才算相等」；印出
+        <code>LineKind</code> 也有固定格式可循。所以
+        <code>PartialEq</code>、<code>Debug</code> 都能 derive。
+      </p>
+
+      <p>
+        但 <code>AppError::Empty</code> 要顯示成 <code>"empty file"</code> 還是
+        <code>"nothing here"</code
+        >，那是你在寫使用者訊息時的選字判斷，不是結構本身能決定的事。一旦中間需要人做選擇，就得回到手寫
+        <code>impl</code>。
+      </p>
+
+      <p>下面這些 trait 都符合「有固定規則可循」，所以可以 derive：</p>
+
+      <table>
+        <thead>
+          <tr>
+            <th>Trait</th>
+            <th>derive 之後你得到什麼</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><code>Debug</code></td>
+            <td><code>{:?}</code> 印出 —— variant / 欄位名稱，加上它們的值</td>
+          </tr>
+          <tr>
+            <td><code>PartialEq</code></td>
+            <td>
+              <code>==</code> / <code>!=</code>，因此也能用
+              <code>assert_eq!</code>
+            </td>
+          </tr>
+          <tr>
+            <td><code>Eq</code></td>
+            <td>
+              疊在
+              <code>PartialEq</code>
+              上面的更嚴格承諾（每個值都等於自己，沒有例外）—— 當
+              <code>HashMap</code> 的 key 時需要
+            </td>
+          </tr>
+          <tr>
+            <td><code>Clone</code></td>
+            <td>一個明確的 <code>.clone()</code> 方法，用來複製這個值</td>
+          </tr>
+          <tr>
+            <td><code>Copy</code></td>
+            <td>
+              見
+              <a href="../GLOSSARY.md#terms"
+                >GLOSSARY.md 的 <code>Copy</code> trait</a
+              >
+              —— 只有每個欄位也都是 <code>Copy</code> 才合法
+            </td>
+          </tr>
+          <tr>
+            <td><code>Default</code></td>
+            <td>
+              一個 <code>Type::default()</code> 建構子，每個欄位用它自己的預設值
+            </td>
+          </tr>
+          <tr>
+            <td><code>Hash</code></td>
+            <td>讓這個值能當 <code>HashMap</code> 的 key</td>
+          </tr>
+        </tbody>
+      </table>
+
+      <p>
+        每一個都附帶一個條件：你的型別裡每個欄位也必須實作那個 trait，derive
+        才能編過。一個裝著 <code>String</code> 的 struct 可以 derive
+        <code>Clone</code>（<code>String</code> 是 <code>Clone</code>），但不能
+        derive <code>Copy</code>（<code>String</code> 不是）。
+      </p>
+
+      <div class="callout tip">
+        💡 如果 <code>#[derive(Something)]</code> 失敗，錯誤是
+        <code
+          >error[E0277]: the trait bound `Field: Something` is not
+          satisfied</code
+        >，那不是 derive 壞了——是這個型別自己的某個欄位還沒有那個能力。
+      </div>
+
+      <h2>5. 把另外兩個測試也修好</h2>
+
+      <p><code>#[derive]</code> 加上之後，把剩下兩個測試也改成同一種寫法：</p>
+
+      <div class="compare compare-before">
+        <div class="kicker">🔴 修改前</div>
+        <pre><code>assert!(matches!(Report::classify_line("// hi"), LineKind::Comment));
+
+assert!(matches!(
+    Report::classify_line("let x = 1;"),
+    LineKind::Code
+));</code></pre>
+      </div>
+
+      <div class="compare compare-after">
+        <div class="kicker">🟢 修改後</div>
+        <pre><code>assert_eq!(Report::classify_line("// hi"), LineKind::Comment);
+
+assert_eq!(Report::classify_line("let x = 1;"), LineKind::Code);</code></pre>
+      </div>
+
+      <p>
+        <code>classify_line</code> 本身完全沒改。你在
+        <code>enum LineKind</code> 上面加的
+        <code>#[derive(Debug, PartialEq)]</code> 就是全部的修復。跑一次
+        <code>cargo test</code>，確認全部通過。
+      </p>
+
+      <h2>6. 三種 attribute，三件不同的工作</h2>
+
+      <table>
+        <thead>
+          <tr>
+            <th>Attribute</th>
+            <th>它實際在做什麼</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><code>#[test]</code></td>
+            <td>標記一個函式，讓測試執行器去呼叫它</td>
+          </tr>
+          <tr>
+            <td><code>#[cfg(test)]</code></td>
+            <td>只有在為 <code>cargo test</code> 編譯時，才把下面這項收進來</td>
+          </tr>
+          <tr>
+            <td><code>#[derive(Trait, ...)]</code></td>
+            <td>照固定規則，寫出一份或多份 <code>impl Trait for Type</code></td>
+          </tr>
+        </tbody>
+      </table>
+
+      <p>
+        <strong>Attribute</strong> 是這三種寫法的總稱。<code>#[derive]</code>
+        是其中會真正產生程式碼的那一種，所以值得一眼就認出來：任何 struct 或
+        enum 上面寫了 <code>#[derive(...)]</code>，它就已經有那些 trait
+        實作——即使檔案裡完全看不到對應的 <code>impl</code>。
+      </p>
+
+      <h2>7. 檢查你記得多少</h2>
+
+      <div class="quiz" data-mcq data-answer="2">
+        <div class="q">
+          <code>assert_eq!(Report::classify_line(""), LineKind::Empty)</code>
+          在這一課修好之前編譯失敗，是因為：
+        </div>
+        <div class="choices">
+          <button>classify_line 回傳了錯誤的 variant</button>
+          <button>LineKind 沒有實作 PartialEq 或 Debug</button>
+          <button>assert_eq! 只能用在數字上</button>
+          <button>Empty 不是合法的 enum variant 名稱</button>
+        </div>
+        <div
+          class="feedback"
+          data-ok="答對了。assert_eq! 需要 == 來比較兩邊，也需要 Debug 在失敗時把它們印出來——LineKind 當時兩個都沒有。"
+          data-bad="再看一次那兩個編譯錯誤：E0369 點名缺少 PartialEq，E0277 點名缺少 Debug。它們都沒有抱怨 variant 名稱，也沒有抱怨函式的回傳值。"
+        ></div>
+      </div>
+
+      <div class="quiz" data-mcq data-answer="3">
+        <div class="q">
+          把 <code>#[derive(Debug, PartialEq)]</code> 放在 enum
+          上面，它做了什麼？
+        </div>
+        <div class="choices">
+          <button>在程式啟動時跑一次檢查</button>
+          <button>刪掉既有的 Debug 實作</button>
+          <button>寫出一份 impl Debug 和一份 impl PartialEq</button>
+          <button>把這個 enum 轉成 struct</button>
+        </div>
+        <div
+          class="feedback"
+          data-ok="答對了。括號裡的每個名字都是一個 trait，編譯器會在編譯你的程式碼之前，各寫一份機械的 impl。"
+          data-bad="再想一下… attribute 是編譯器在編譯前讀的，不是程式執行時才跑的。#[derive] 替你省下的，是你本來得親手打的哪一段？"
+        ></div>
+      </div>
+
+      <div class="quiz" data-mcq data-answer="1">
+        <div class="q">
+          <code>impl fmt::Display for AppError</code> 要手寫、不能
+          derive，是因為：
+        </div>
+        <div class="choices">
+          <button>確切要印哪句話是人的決定，不是機械規則</button>
+          <button>Display 不能實作在 enum 上</button>
+          <button>AppError 的 variant 太多，什麼都不能 derive</button>
+          <button>derive 只能用在 struct，不能用在 enum</button>
+        </div>
+        <div
+          class="feedback"
+          data-ok="答對了。#[derive] 需要一條沒有歧義的規則才能照做。比較 variant 是機械的；決定一個 variant 要印出哪句話，不是。"
+          data-bad="再看一次… LineKind 也是 enum，它 derive 起來完全沒問題。重點不是 variant 數量，也不是 struct 還是 enum——差別在 Display 必須產出什麼。"
+        ></div>
+      </div>
+
+      <div class="win">
+        <div class="kicker">這一課的成果</div>
+        你把測試裡的繞路寫法（用 <code>matches!</code> 代替
+        <code>assert_eq!</code>）收成一行修復，也終於替從 Lesson 20
+        起就一直在寫的 <code>#[...]</code> 取了名字。下次打開一份陌生檔案，看到
+        struct 上面的
+        <code>#[derive(Debug, Clone, PartialEq)]</code
+        >，你會確切知道它身上有哪三份
+        <code>impl</code>——即使那三份在檔案裡完全沒有寫出來。<br /><br />
+        速查表：<a href="../reference/derive-and-attributes.html"
+          >#[derive] 與 attribute</a
+        >。
+      </div>
+
+      <p class="source">
+        主要參考資料：<a
+          href="https://doc.rust-lang.org/book/appendix-03-derivable-traits.html"
+          target="_blank"
+          >The Rust Programming Language — Appendix C: Derivable Traits</a
+        >。編譯錯誤與修法都是從
+        <code>hello_cli/src/report.rs</code> 實際操作來的，derive
+        前後各驗證過一次。
+      </p>
+
+      <nav class="lesson-links">
+        <a href="0028-generic-functions-and-trait-bounds.html"
+          >&larr; 上一課：泛型與 trait bound</a
+        >
+        <a href="#">下一課：待訂 &rarr;</a>
+      </nav>
+
+      <p class="ask-agent">
+        卡住了、或有任何看不懂的地方，直接問我（你的 AI 教學助手）就好 ——
+        隨時可以打斷這個流程提問。
+      </p>
+    </main>
+  </body>
+</html>

@@ -29,11 +29,73 @@
       <h2>2. Trait：貼在型別身上的技能貼紙</h2>
 
       <p>
-        <strong>Trait</strong>（特徵）宣告一種能力，型別要嘛有、要嘛沒有。你可以把它想成一張<strong>技能貼紙</strong>：<code>Display</code> 的意思是「我知道怎麼把自己印成文字」，<code>PartialOrd</code> 是「我知道怎麼比大小」。貼紙上只寫能力的名字和用法，不寫怎麼做；真正的實作，要等 <code>impl</code> 才補上去。
+        <strong>Trait</strong>（特徵）宣告一種能力。你可以先把它想成一張<strong>技能貼紙</strong>：貼紙本身只寫「你必須會做什麼」，不寫「你實際上怎麼做」。
       </p>
 
       <p>
-        你已經在 <code>GLOSSARY.md</code> 見過這個字，但還沒正式學過怎麼自己寫一個。跟 TypeScript 的 <code>interface</code> 是同一個角色：
+        例如，我們定義一張叫做 <code>Summarize</code> 的貼紙，要求擁有它的型別都必須提供一個 <code>summary()</code>：
+      </p>
+
+      <pre><code>trait Summarize {
+    fn summary(&amp;self) -&gt; String;
+}</code></pre>
+
+      <p>
+        這裡的 <code>trait</code> 只是<strong>宣告能力</strong>。它是在說：「如果一個型別要實作 <code>Summarize</code>，那它就必須有一個 <code>summary()</code>，而且回傳 <code>String</code>。」但它還沒有告訴我們這個函式到底要做什麼。
+      </p>
+
+      <p>
+        接著假設我們有一個 <code>Article</code>：
+      </p>
+
+      <pre><code>struct Article {
+    title: String,
+}</code></pre>
+
+      <p>
+        我們可以用 <code>impl TraitName for TypeName</code>，把這張貼紙真正貼到 <code>Article</code> 上，並補上它的實作：
+      </p>
+
+      <pre><code>impl Summarize for Article {
+    fn summary(&amp;self) -&gt; String {
+        format!("文章：{}", self.title)
+    }
+}</code></pre>
+
+      <p>
+        現在 <code>Article</code> 就具備了 <code>Summarize</code> 這個能力，所以可以呼叫：
+      </p>
+
+      <pre><code>let article = Article {
+    title: String::from("Rust 入門"),
+};
+
+println!("{}", article.summary());
+// 文章：Rust 入門</code></pre>
+
+      <p>
+        所以可以把這兩個東西分開記：
+      </p>
+
+      <ul>
+        <li><code>trait</code>：定義「需要具備什麼能力」。</li>
+        <li><code>impl</code>：定義「這個型別要怎麼實作這個能力」。</li>
+      </ul>
+
+      <p>
+        你可以把整個過程想成：
+      </p>
+
+      <pre><code>trait Summarize
+    ↓
+「會這個能力的人，都必須有 summary()」
+    ↓
+impl Summarize for Article
+    ↓
+「Article 真的把 summary() 寫出來了」</code></pre>
+
+      <p>
+        你已經在 <code>GLOSSARY.md</code> 見過這個字，但還沒正式學過怎麼自己寫一個。它和 TypeScript 的 <code>interface</code> 很接近：
       </p>
 
       <pre><code>// TypeScript
@@ -41,13 +103,14 @@ interface Summarize {
   summary(): string;
 }
 
-// Rust
-trait Summarize {
-    fn summary(&amp;self) -&gt; String;
+class Article implements Summarize {
+  summary() {
+    return "文章：Rust 入門";
+  }
 }</code></pre>
 
       <p>
-        <code>trait</code> 本身不寫實作，只寫簽名。要讓某個型別真的擁有這個能力，得用 <code>impl TraitName for TypeName</code> 補上函式的內容 —— 這就是 TypeScript 的 <code>implements</code>：幫這個型別把貼紙貼上去，並寫出它怎麼做。
+        Rust 和 TypeScript 的寫法不同，但這裡可以先抓住同一個核心：<strong>先描述一個型別必須具備的能力，再由具體型別提供實作。</strong>
       </p>
 
       <h2>3. 你早就實作過 trait 了，只是沒人跟你說</h2>
@@ -241,7 +304,7 @@ println!("{}", largest(&amp;words));          // rust</code></pre>
 
       <nav class="lesson-links">
         <a href="0027-stale-derived-state.html">&larr; 上一課：悄悄過期的欄位</a>
-        <a href="#">下一課：待訂 &rarr;</a>
+        <a href="0029-derive-and-attribute-macros.html">下一課：#[derive] 與屬性宏 &rarr;</a>
       </nav>
 
       <p class="ask-agent">
