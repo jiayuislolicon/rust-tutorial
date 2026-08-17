@@ -1,0 +1,324 @@
+<!doctype html>
+<html lang="zh-Hant">
+  <head>
+    <meta charset="UTF-8" />
+    <title>Lesson 33 · Display — 讓型別自己決定怎麼印出來</title>
+    <link rel="stylesheet" href="../assets/style.css" />
+    <script src="../assets/quiz.js"></script>
+  </head>
+  <body>
+    <main>
+      <div class="kicker">Lesson 0033 · Rust · CLI 工具養成路線</div>
+      <h1><code>Display</code> — 讓型別自己決定怎麼印出來</h1>
+      <div class="byline">
+        <strong>學習目標：</strong>在
+        <code>main.rs</code> 裡，你為了把三個數字塞進
+        <code>println!</code>，不得不把
+        <code>LineStats</code> 拆解成三個變數。這一課你會為
+        <code>LineStats</code> 實作 <code>Display</code> trait，讓 struct
+        自己決定輸出格式，然後把呼叫端簡化成一行
+        <code>println!("{}", stats)</code>。
+      </div>
+
+      <h2>1. 拆解 struct 只是為了印出來</h2>
+
+      <p>
+        打開 <code>hello_cli/src/main.rs</code>，在
+        <code>run()</code> 底部找到這幾行：
+      </p>
+
+      <pre><code>let LineStats {
+    empty,
+    comment,
+    code,
+} = report.line_stats();
+println!("空行 {} 行，註解 {} 行，程式碼 {} 行", empty, comment, code);</code></pre>
+
+      <p>
+        你從 <code>LineStats</code> 裡拆出三個欄位，立刻又把它們塞進 format
+        string。struct
+        本來就握有這三個值——你只是把它已經知道的東西重新打包一遍。
+      </p>
+
+      <p>
+        這個問題你以前就遇過。Lesson 16 裡，<code>AppError</code> 沒辦法用
+        <code>println!("{}", err)</code> 印出來。解法是實作
+        <code>Display</code>：你寫了
+        <code>impl fmt::Display for AppError</code>，告訴編譯器每個 variant
+        該產生什麼文字，之後 <code>{}</code> 就能直接用了。
+      </p>
+
+      <p>
+        <code>LineStats</code> 面對的是同一個問題。替它加上
+        <code>Display</code> 實作，上面那六行就能縮成一行。
+      </p>
+
+      <h2>2. 為 <code>LineStats</code> 實作 <code>Display</code></h2>
+
+      <p>
+        打開 <code>hello_cli/src/report.rs</code>。把下面這段加在現有的
+        <code>impl Report</code> <strong>外面</strong>——這是
+        <code>impl Display for LineStats</code>，不是
+        <code>Report</code> 的方法：
+      </p>
+
+      <pre><code>use std::fmt;
+
+impl fmt::Display for LineStats {
+    fn fmt(&amp;self, f: &amp;mut fmt::Formatter) -&gt; fmt::Result {
+        write!(
+            f,
+            "空行 {} 行，註解 {} 行，程式碼 {} 行",
+            self.empty, self.comment, self.code
+        )
+    }
+}</code></pre>
+
+      <p>
+        這個簽名的每一部分都是 <code>Display</code> trait
+        規定的——你不能改函式名稱、參數或回傳型別。你<strong>能</strong>控制的是函式本體：<code
+          >write!</code
+        >
+        那行決定了 <code>{}</code> 最後會印出什麼文字。
+      </p>
+
+      <p>
+        <code>format!(...)</code> 會把格式化後的內容組成一個 String
+        回傳給你；<code>write!(f, ...)</code> 則會把格式化後的內容寫進
+        <code>Display::fmt()</code> 收到的 formatter <code>f</code>。這裡的
+        <code>f</code> 是 Rust 的格式化系統提供的輸出目標，你只需要負責把
+        <code>LineStats</code> 想顯示的內容寫進去。
+      </p>
+
+      <h2>3. 簡化 <code>main.rs</code></h2>
+
+      <div class="compare compare-before">
+        <div class="kicker">🔴 修改前 —— 拆解 struct，手動組 format string</div>
+        <pre><code>let LineStats {
+    empty,
+    comment,
+    code,
+} = report.line_stats();
+println!("空行 {} 行，註解 {} 行，程式碼 {} 行", empty, comment, code);</code></pre>
+      </div>
+
+      <div class="compare compare-after">
+        <div class="kicker">🟢 修改後 —— 讓型別自己格式化</div>
+        <pre><code>println!("{}", report.line_stats());</code></pre>
+      </div>
+
+      <p>
+        一行取代六行。format string 現在住在
+        <code>LineStats</code> 裡，緊挨著它的資料。如果你之後加了一個欄位——比如
+        <code>doc_comment</code>——只要改 <code>Display</code> 的 impl
+        一次，整份程式裡每一個
+        <code>println!("{}", stats)</code>
+        都會自動跟上。用舊寫法的話，你得找出每一處拆解 struct 的地方，逐一修改。
+      </p>
+
+      <p>
+        改完之後，<code>main.rs</code> 也不再需要
+        <code>use crate::report::LineStats;</code> 這行了。刪掉那行 import，跑
+        <code>cargo build</code> 確認一切能編譯。
+      </p>
+
+      <h2>4. <code>Debug</code> vs <code>Display</code>：兩種讀者</h2>
+
+      <p>
+        <code>LineStats</code> 現在有兩個格式化 trait：<code>Debug</code>（來自
+        <code>#[derive(Debug)]</code>）和 <code>Display</code>（來自你剛寫的
+        <code>impl</code>）。它們服務的對象不同：
+      </p>
+
+      <table>
+        <thead>
+          <tr>
+            <th></th>
+            <th><code>Debug</code> (<code>{:?}</code>)</th>
+            <th><code>Display</code> (<code>{}</code>)</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>對象</td>
+            <td>你，寫程式的人</td>
+            <td>終端使用者</td>
+          </tr>
+          <tr>
+            <td>怎麼取得</td>
+            <td><code>#[derive(Debug)]</code></td>
+            <td>手寫 <code>impl fmt::Display</code></td>
+          </tr>
+          <tr>
+            <td><code>LineStats</code> 的輸出</td>
+            <td><code>LineStats { empty: 1, comment: 2, code: 7 }</code></td>
+            <td><code>空行 1 行，註解 2 行，程式碼 7 行</code></td>
+          </tr>
+        </tbody>
+      </table>
+
+      <p>
+        <code>Debug</code> 可以
+        derive，因為它的規則是機械式的：印出型別名稱，再印出每個欄位名稱和值。不需要人類做判斷。<code
+          >Display</code
+        >
+        不能 derive，因為要印什麼文字是一個設計選擇——只有你知道該說 "empty: 1"
+        還是「空行 1 行」。
+      </p>
+
+      <p>
+        測試和除錯時用 <code>{:?}</code>。使用者會看到的輸出用
+        <code>{}</code>。一個型別可以同時擁有兩者。
+      </p>
+
+      <h2>5. 你會一再重用的模式</h2>
+
+      <p>
+        到目前為止，你在這個專案裡寫了兩次
+        <code>impl fmt::Display</code>：一次給 <code>AppError</code>（Lesson
+        16），一次給 <code>LineStats</code>（這一課）。形狀永遠一樣：
+      </p>
+
+      <pre><code>impl fmt::Display for YourType {
+    fn fmt(&amp;self, f: &amp;mut fmt::Formatter) -&gt; fmt::Result {
+        write!(f, "...", self.field_a, self.field_b)
+    }
+}</code></pre>
+
+      <ul>
+        <li>
+          <strong>簽名</strong>——<code
+            >fn fmt(&amp;self, f: &amp;mut fmt::Formatter) -&gt;
+            fmt::Result</code
+          >——是固定的。你不能改名，也不能改參數型別。
+        </li>
+        <li>
+          <strong>函式本體</strong>——<code>write!</code> 那行——是你的。對 enum
+          來說，你 <code>match self</code>，為每個 variant 產生不同文字（像
+          <code>AppError</code>）。對 struct 來說，你讀
+          <code>self.field</code>，組出一則訊息（像 <code>LineStats</code>）。
+        </li>
+      </ul>
+
+      <p>
+        每當你發現自己為了把值塞進 <code>println!</code> 而拆解 struct 或 match
+        enum，那就是型別該實作 <code>Display</code> 的訊號。
+      </p>
+
+      <h2>6. 檢查你記得多少</h2>
+
+      <div class="quiz" data-mcq data-answer="2">
+        <div class="q">
+          為什麼 <code>Debug</code> 可以用
+          <code>#[derive(Debug)]</code> derive，但 <code>Display</code> 不行？
+        </div>
+        <div class="choices">
+          <button>
+            <code>Display</code> 比 <code>Debug</code> 占用更多記憶體
+          </button>
+          <button>
+            <code>Debug</code> 遵循一條機械式規則（印型別名稱加所有欄位）；<code
+              >Display</code
+            >
+            的文字則是人類的設計選擇
+          </button>
+          <button>
+            <code>Display</code> 只適用於 <code>i32</code>、<code>String</code>
+            這類基本型別
+          </button>
+          <button><code>Debug</code> 不使用 <code>fmt</code> 模組</button>
+        </div>
+        <div
+          class="feedback"
+          data-ok="答對了。derive 適用在編譯器能機械式推導出唯一正確答案的場合。<code>Debug</code> 有固定規則；<code>Display</code> 的文字取決於你想讓使用者看到什麼——編譯器猜不到。"
+          data-bad="再想一下… derive 會依照固定規則自動產生程式碼。<code>Debug</code> 有這樣的規則（印型別名稱，再印每個欄位）。<code>Display</code> 對於該產生什麼文字，有沒有一條顯而易見的固定規則？"
+        ></div>
+      </div>
+
+      <div class="quiz" data-mcq data-answer="3">
+        <div class="q">
+          在 <code>Display</code> 的 impl 裡，為什麼用
+          <code>write!(f, ...)</code> 而不是 <code>format!(...)</code>？
+        </div>
+        <div class="choices">
+          <button><code>format!</code> 無法處理 struct 欄位</button>
+          <button><code>write!</code> 比較快，因為它跳過配置記憶體</button>
+          <button>
+            trait 要求你把文字寫進 formatter <code>f</code>，而不是回傳
+            <code>String</code>
+          </button>
+          <button>
+            <code>format!</code> 只能在 <code>main()</code> 裡使用
+          </button>
+        </div>
+        <div
+          class="feedback"
+          data-ok="答對了。<code>Display</code> trait 的 <code>fmt</code> 方法收到的是 formatter <code>f</code>。<code>write!(f, ...)</code> 把文字寫進那個 formatter；<code>format!(...)</code> 則會另外建立一個 <code>String</code>——trait 不要你這樣做。"
+          data-bad="再看一次回傳型別：是 <code>fmt::Result</code>，不是 <code>String</code>。trait 交給你一個 formatter <code>f</code>，期待你把文字寫進去。<code>write!(f, ...)</code> 正是在做這件事。"
+        ></div>
+      </div>
+
+      <div class="quiz" data-mcq data-answer="1">
+        <div class="q">
+          為 <code>LineStats</code> 實作
+          <code>Display</code> 之後，下面哪一行能編譯？
+        </div>
+        <div class="choices">
+          <button>println!("{}", report.line_stats());</button>
+          <button>println!("{}", report.line_stats);（不加括號）</button>
+          <button>
+            println!("{:?}", report.line_stats());（只有 {:?} 能用）
+          </button>
+          <button>println!("{}", LineStats);（型別名稱，不是值）</button>
+        </div>
+        <div
+          class="feedback"
+          data-ok="答對了。<code>line_stats()</code> 是方法呼叫，回傳一個 <code>LineStats</code> 值。這個值現在有了 <code>Display</code>，所以 <code>{}</code> 能直接用。"
+          data-bad="再想一下… <code>line_stats</code> 是方法——你得加 <code>()</code> 才能呼叫。而且 <code>{}</code> 用的是 <code>Display</code>，你剛剛才實作過，所以它能運作。<code>{:?}</code> 也能用（靠 <code>Debug</code>），但 <code>{}</code> 並不限於 <code>Debug</code>。"
+        ></div>
+      </div>
+
+      <div class="win">
+        <div class="kicker">這一課的成果</div>
+        你為 <code>LineStats</code> 實作了
+        <code>Display</code>，把六行拆解再印出的程式碼縮成一行
+        <code>println!("{}", stats)</code>。你也看清了
+        <code>Debug</code>（derive 出來，給寫程式的人看）和
+        <code>Display</code>（手寫，給使用者看）的差別。這個模式——<code
+          >impl fmt::Display for YourType</code
+        >
+        加上 <code>write!(f, ...)</code> 本體——每次形狀都一樣，struct 和 enum
+        都適用。<br /><br />
+        你的專案現在有兩個
+        <code>Display</code> 實作：<code>AppError</code>（Lesson 16）和
+        <code>LineStats</code>（這一課）。下次再發現自己拆解 struct
+        只是為了印出來，你就知道該做什麼了。
+      </div>
+
+      <p class="source">
+        主要參考資料：<a
+          href="https://doc.rust-lang.org/std/fmt/trait.Display.html"
+          target="_blank"
+          >std::fmt::Display</a
+        >、<a
+          href="https://doc.rust-lang.org/book/ch05-02-example-structs.html#adding-useful-functionality-with-derived-traits"
+          target="_blank"
+          >The Rust Programming Language — Adding Useful Functionality with
+          Derived Traits</a
+        >。所有改動皆在 <code>hello_cli/</code> 下測試通過。
+      </p>
+
+      <nav class="lesson-links">
+        <a href="0032-collect-into-collection.html"
+          >&larr; 上一課：.collect() 把 iterator 變成 collection</a
+        >
+        <a href="#">下一課：TBD &rarr;</a>
+      </nav>
+
+      <p class="ask-agent">
+        卡住了、或有任何看不懂的地方，直接問我（你的 AI 教學助手）就好 ——
+        隨時可以打斷這個流程提問。
+      </p>
+    </main>
+  </body>
+</html>

@@ -1,5 +1,6 @@
 use crate::errors::AppError;
 use std::collections::BTreeMap;
+use std::fmt;
 use std::fs;
 
 pub struct Report {
@@ -85,6 +86,16 @@ impl Report {
         }
 
         return counts;
+    }
+}
+
+impl fmt::Display for LineStats {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(
+            f,
+            "空行 {} 行，註解 {} 行，程式碼 {} 行",
+            self.empty, self.comment, self.code
+        )
     }
 }
 
