@@ -70,6 +70,13 @@ impl Report {
         self.content.lines().count()
     }
 
+    pub fn lines_of_kind(&self, kind: LineKind) -> Vec<&str> {
+        self.content
+            .lines()
+            .filter(|line| Report::classify_line(line) == kind)
+            .collect()
+    }
+
     pub fn word_counts(&self) -> BTreeMap<String, usize> {
         let mut counts = BTreeMap::new();
 
@@ -121,6 +128,16 @@ mod tests {
                 code: 1
             }
         );
+    }
+
+    #[test]
+    fn lines_of_kind_filters_correctly() {
+        let report = Report::new("test.txt", "code\n\n// comment\nmore code\n".to_string());
+        let comments = report.lines_of_kind(LineKind::Comment);
+        assert_eq!(comments, vec!["// comment"]);
+
+        let code_lines = report.lines_of_kind(LineKind::Code);
+        assert_eq!(code_lines, vec!["code", "more code"]);
     }
 
     #[test]

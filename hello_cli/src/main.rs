@@ -39,7 +39,7 @@ fn run() -> Result<(), AppError> {
 
     if words_count_only {
         let counts = report.word_counts();
-        let mut pairs: Vec<(&String, &usize)> = counts.iter().collect();
+        let mut pairs: Vec<_> = counts.iter().collect();
 
         pairs.retain(|pair| *pair.1 >= min);
         pairs.sort_by(|a, b| b.1.cmp(a.1));

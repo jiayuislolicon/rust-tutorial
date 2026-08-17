@@ -1,0 +1,247 @@
+<!doctype html>
+<html lang="zh-Hant">
+  <head>
+    <meta charset="UTF-8" />
+    <title>Lesson 32 · .collect() — 把 iterator 變成 collection</title>
+    <link rel="stylesheet" href="../assets/style.css" />
+    <script src="../assets/quiz.js"></script>
+  </head>
+  <body>
+    <main>
+      <div class="kicker">Lesson 0032 · Rust · CLI 工具養成路線</div>
+      <h1><code>.collect()</code> — 把 iterator 變成 collection</h1>
+      <div class="byline">
+        <strong>學習目標：</strong>上一課你用 <code>.fold()</code> 走過 iterator，一步一步累積出最終結果。但如果你要的結果是標準 collection——<code>Vec</code>、<code>String</code>、<code>BTreeMap</code>——有更短的路： <code>.collect()</code>。你會用它簡化現有程式碼，並寫一個依行別篩選內容的新方法。
+      </div>
+
+      <h2>1. 一行你早就寫過的程式碼</h2>
+
+      <p>打開 <code>hello_cli/src/main.rs</code>，找到 <code>--words</code> 分支：</p>
+
+      <pre><code>let counts = report.word_counts();
+let mut pairs: Vec&lt;(&amp;String, &amp;usize)&gt; = counts.iter().collect();
+pairs.retain(|pair| *pair.1 &gt;= min);
+pairs.sort_by(|a, b| b.1.cmp(a.1));</code></pre>
+
+      <p>
+        先看第二行。<code>counts.iter()</code> 產生一個 iterator，逐項走過 map 裡的 <code>(&amp;String, &amp;usize)</code> 配對。接著 <code>.collect()</code> 把整個 iterator 消耗掉，把每一項收進 <code>Vec</code>。
+      </p>
+
+      <p>
+        這跟 <code>.fold()</code> 做的事很像：消耗 iterator，產出一個最終值。差別在於，<code>.fold()</code> 要你自己寫累積邏輯；<code>.collect()</code> 則是說「我已經知道怎麼從元素組出 <code>Vec</code>（或 <code>String</code>、<code>BTreeMap</code>）——你只要告訴我要哪種容器就好」。
+      </p>
+
+      <h2>2. 為什麼 <code>.collect()</code> 一定要你指定型別</h2>
+
+      <p>試著拿掉型別標注：</p>
+
+      <pre><code>let mut pairs = counts.iter().collect();</code></pre>
+
+      <p>編譯器會拒絕：</p>
+
+      <pre><code>error[E0283]: type annotations needed
+  |
+  |     let mut pairs = counts.iter().collect();
+  |         ^^^^^^^^^ cannot infer type
+  |
+  = note: multiple `impl`s satisfying `_: FromIterator&lt;...&gt;` found</code></pre>
+
+      <p>
+        同一個 iterator 可以收進 <code>Vec</code>、<code>VecDeque</code>、<code>HashSet</code>，或其他型別。編譯器猜不到你要哪一種，所以你得明確告訴它。
+      </p>
+
+      <p>
+        跟 <code>.fold()</code> 對照一下：那邊你傳入初始值——例如 <code>LineStats { empty: 0, ... }</code>——編譯器從那個值就知道累積器的型別。<code>.collect()</code> 沒有初始值可以推，因此必須在某處寫清楚目標型別。
+      </p>
+
+      <h2>3. <code>Vec&lt;_&gt;</code> — 指定容器，元素型別交給編譯器</h2>
+
+      <p>
+        你不必把元素型別從頭寫到尾。<code>Vec&lt;_&gt;</code> 的意思是「我要 <code>Vec</code>，元素型別你自己推」。編譯器能從 iterator 推斷元素型別，這樣就夠了：
+      </p>
+
+      <div class="compare compare-before">
+        <div class="kicker">🔴 修改前 —— 元素型別全部手寫</div>
+        <pre><code>let mut pairs: Vec&lt;(&amp;String, &amp;usize)&gt; = counts.iter().collect();</code></pre>
+      </div>
+
+      <div class="compare compare-after">
+        <div class="kicker">🟢 修改後 —— 元素型別交給編譯器填</div>
+        <pre><code>let mut pairs: Vec&lt;_&gt; = counts.iter().collect();</code></pre>
+      </div>
+
+      <p>
+        底線 <code>_</code> 代表「這段我不想寫，你來推」。編譯器已經知道 <code>counts.iter()</code> 產出 <code>(&amp;String, &amp;usize)</code>，所以會把空白填上。結果完全一樣——少打幾個字，保證不變。
+      </p>
+
+      <p>
+        現在就在 <code>main.rs</code> 做這個改動，跑 <code>cargo build</code>——跟改之前一樣能編譯。
+      </p>
+
+      <h2>4. <code>.filter().collect()</code> — 寫一個新方法</h2>
+
+      <p>
+        目前如果你想列出檔案裡所有註解行，沒有直接的方法可以問。<code>line_stats()</code> 只告訴你有幾行，不告訴你是哪幾行。你得把篩選加計數的邏輯重寫一遍，但拿掉計數那部分。
+      </p>
+
+      <p>
+        <code>.filter().collect()</code> 用一條管線解決：先篩出你要的行，再把留下來的收進 <code>Vec</code>。在 <code>report.rs</code> 裡、<code>line_count()</code> 後面加上這個方法：
+      </p>
+
+      <pre><code>pub fn lines_of_kind(&amp;self, kind: LineKind) -&gt; Vec&lt;&amp;str&gt; {
+    self.content
+        .lines()
+        .filter(|line| Report::classify_line(line) == kind)
+        .collect()
+}</code></pre>
+
+      <p>逐步看一遍：</p>
+
+      <ul>
+        <li>
+          <strong><code>self.content.lines()</code></strong> — 產生 <code>&amp;str</code> 的 iterator，一行一項。
+        </li>
+        <li>
+          <strong><code>.filter(|line| ...)</code></strong> — 只保留分類符合 <code>kind</code> 的行。<code>==</code> 能運作，是因為 <code>LineKind</code> 有 derive <code>PartialEq</code>（Lesson 30 學過）。
+        </li>
+        <li>
+          <strong><code>.collect()</code></strong> — 把篩完後的 <code>&amp;str</code> 收進 <code>Vec&lt;&amp;str&gt;</code>。這裡不需要型別標注，因為函式簽名上的回傳型別已經告訴編譯器要組出什麼。
+        </li>
+      </ul>
+
+      <p>加一個測試：</p>
+
+      <pre><code>#[test]
+fn lines_of_kind_filters_correctly() {
+    let report = Report::new("test.txt", "code\n\n// comment\nmore code\n".to_string());
+    let comments = report.lines_of_kind(LineKind::Comment);
+    assert_eq!(comments, vec!["// comment"]);
+
+    let code_lines = report.lines_of_kind(LineKind::Code);
+    assert_eq!(code_lines, vec!["code", "more code"]);
+}</code></pre>
+
+      <p>跑 <code>cargo test</code>：</p>
+
+      <pre><code>running 7 tests
+test report::tests::classify_line_code ... ok
+test report::tests::classify_line_comment ... ok
+test report::tests::classify_line_empty ... ok
+test report::tests::line_stats ... ok
+test report::tests::lines_of_kind_filters_correctly ... ok
+test report::tests::summary_agrees_with_line_stats ... ok
+test report::tests::word_counts ... ok
+
+test result: ok. 7 passed; 0 failed</code></pre>
+
+      <p>
+        注意方法本體裡的 <code>.collect()</code> 不需要型別標注。編譯器看宣告的回傳型別 <code>Vec&lt;&amp;str&gt;</code>，就知道 <code>.collect()</code> 該產出什麼。只要目標型別已經在別處寫清楚——回傳型別、函式參數、或帶標注的 <code>let</code>——編譯器就會拿它來推。
+      </p>
+
+      <h2>5. <code>.collect()</code> 能組的不只是 <code>Vec</code></h2>
+
+      <p>
+        <code>.collect()</code> 適用於任何實作 <code>FromIterator</code> trait 的型別。你暫時不必深究這個 trait——只要知道幾個標準型別已經支援：
+      </p>
+
+      <ul>
+        <li>
+          <strong><code>Vec&lt;T&gt;</code></strong> — 把元素收進可增長的清單。這是最常見的用法。
+        </li>
+        <li>
+          <strong><code>String</code></strong> — 把 <code>char</code> 或 <code>&amp;str</code> 的 iterator 接成一段字串。
+          <pre><code>let greeting: String = vec!["Hello", " ", "world"].into_iter().collect();
+// greeting == "Hello world"</code></pre>
+        </li>
+        <li>
+          <strong><code>BTreeMap&lt;K, V&gt;</code></strong> — 把配對收進 map。你現有的 <code>word_counts()</code> 用 <code>for</code> 迴圈，是因為計數邏輯需要 <code>.entry().or_insert()</code>。但如果 key-value 配對已經準備好，可以直接 collect 進去。
+        </li>
+      </ul>
+
+      <p>
+        什麼時候用 <code>.collect()</code>、什麼時候用 <code>.fold()</code>？一個簡單原則：結果是標準 collection，而且每個元素對應 collection 裡的一項，就用 <code>.collect()</code>。如果需要自訂累積邏輯——例如在 struct 裡逐項加計數——<code>.fold()</code> 才是對的工具。
+      </p>
+
+      <h2>6. 檢查你記得多少</h2>
+
+      <div class="quiz" data-mcq data-answer="2">
+        <div class="q">
+          為什麼 <code>.collect()</code> 在沒有型別標注（或能推斷型別的回傳型別）時無法編譯？
+        </div>
+        <div class="choices">
+          <button>iterator 可能是空的</button>
+          <button>多種 collection 型別都實作了 FromIterator，編譯器無法替你選</button>
+          <button>collect() 只能在回傳 Result 的函式裡使用</button>
+          <button>collect() 裡的 closure 需要明確型別</button>
+        </div>
+        <div
+          class="feedback"
+          data-ok="答對了。同一個 iterator 可以變成 Vec、VecDeque、HashSet 等等。編譯器需要你指定要哪一種。"
+          data-bad="再想一下…問題不在 iterator 是否為空，也跟 Result 無關。關鍵是很多容器都知道怎麼從 iterator 組出來，編譯器沒有線索替你選一個。"
+        ></div>
+      </div>
+
+      <div class="quiz" data-mcq data-answer="3">
+        <div class="q">
+          在 <code>lines_of_kind()</code> 裡，為什麼 <code>.collect()</code> 不需要在 <code>let</code> 綁定上寫 <code>Vec&lt;_&gt;</code>？
+        </div>
+        <div class="choices">
+          <button>因為 .filter() 一定會產出 Vec</button>
+          <button>因為方法接收 &amp;self</button>
+          <button>因為函式的回傳型別已經告訴編譯器要組出什麼</button>
+          <button>因為 LineKind 有 PartialEq</button>
+        </div>
+        <div
+          class="feedback"
+          data-ok="答對了。回傳型別是 Vec&lt;&amp;str&gt;，而 .collect() 是最後一個表達式——編譯器清楚知道它該產出什麼。"
+          data-bad="再看一次型別資訊從哪來。函式簽名寫明回傳 Vec&lt;&amp;str&gt;，.collect() 又是被 return 的最後表達式，編譯器就用回傳型別決定要組出哪種 collection。"
+        ></div>
+      </div>
+
+      <div class="quiz" data-mcq data-answer="1">
+        <div class="q">
+          你有一個產出 <code>(&amp;str, usize)</code> 配對的 iterator，想要 <code>BTreeMap&lt;&amp;str, usize&gt;</code>。哪個做法可行？
+        </div>
+        <div class="choices">
+          <button>let map: BTreeMap&lt;&amp;str, usize&gt; = iter.collect();</button>
+          <button>let map = iter.fold(BTreeMap::new(), |m, pair| m.push(pair));</button>
+          <button>let map: Vec&lt;_&gt; = iter.collect();</button>
+          <button>let map = iter.collect::&lt;Vec&lt;_&gt;&gt;();</button>
+        </div>
+        <div
+          class="feedback"
+          data-ok="答對了。BTreeMap 對 key-value 配對實作了 FromIterator，可以直接 collect 進去——只要標明型別就好。"
+          data-bad="再想一下…你標成 Vec 就會得到 Vec，不是 map。而且 BTreeMap 沒有 .push() 方法。關鍵是標明 BTreeMap 型別，.collect() 就知道怎麼從配對組出 map。"
+        ></div>
+      </div>
+
+      <div class="win">
+        <div class="kicker">這一課的成果</div>
+        你學到 <code>.collect()</code> 會消耗 iterator 並組出 collection——但前提是你得告訴它要哪一種。你把 <code>main.rs</code> 的型別標注簡化成 <code>Vec&lt;_&gt;</code>，並新增了 <code>lines_of_kind()</code>，用 <code>.filter().collect()</code> 抽出符合指定分類的行。<br /><br />
+        搭配 Lesson 31 的 <code>.fold()</code>，你現在掌握兩種把 iterator 變成最終結果的主要方式：<code>.collect()</code> 用於標準 collection，<code>.fold()</code> 用於自訂累積邏輯。<br /><br />
+        速查表：<a href="../reference/iterators.html">疊代器：filter / map / count / fold / collect</a>。
+      </div>
+
+      <p class="source">
+        主要參考資料：<a
+          href="https://doc.rust-lang.org/book/ch13-02-iterators.html"
+          target="_blank"
+          >The Rust Programming Language — Ch 13.2: Processing a Series of Items with Iterators</a
+        >、<a
+          href="https://doc.rust-lang.org/std/iter/trait.FromIterator.html"
+          target="_blank"
+          >std::iter::FromIterator</a
+        >。所有修改從 <code>hello_cli/</code> 實際操作驗證。
+      </p>
+
+      <nav class="lesson-links">
+        <a href="0031-fold-single-pass.html">&larr; 上一課：.fold() 單趟累積</a>
+        <a href="#">下一課：待補 &rarr;</a>
+      </nav>
+
+      <p class="ask-agent">
+        卡住了、或有任何看不懂的地方，直接問我（你的 AI 教學助手）就好 —— 隨時可以打斷這個流程提問。
+      </p>
+    </main>
+  </body>
+</html>

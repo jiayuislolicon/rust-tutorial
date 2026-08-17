@@ -8,7 +8,7 @@
   <body>
     <main>
       <div class="kicker">Reference · 速查表</div>
-      <h1>疊代器：filter / map / count / collect</h1>
+      <h1>疊代器：filter / map / count / fold / collect</h1>
 
       <h2>常用方法</h2>
       <table>
@@ -38,6 +38,11 @@
           <tr>
             <td><code>.count()</code></td>
             <td>跑到底，回傳元素個數。</td>
+            <td>收尾</td>
+          </tr>
+          <tr>
+            <td><code>.fold(init, |acc, x| ...)</code></td>
+            <td>帶一個累加器走到底，每步用 closure 更新，回傳最終累加器。</td>
             <td>收尾</td>
           </tr>
           <tr>
@@ -109,6 +114,103 @@ let doubled: Vec&lt;i32&gt; = step.collect();   // 到這裡才真的跑</code><
         <code>lines()</code> 本身就是疊代器，不需要再 <code>.iter()</code>。
       </p>
 
+      <h2><code>.fold()</code>：帶著累加器走完一遍</h2>
+      <pre><code>iterator.fold(初始值, |acc, item| {
+    // 用 item 更新 acc
+    acc
+})</code></pre>
+      <p>
+        兩個參數：初始值（決定累加器型別）和一個 closure。closure
+        每一步接收目前的累加器和一個元素，處理完必須把累加器交回來。走完後回傳最終累加器。
+      </p>
+      <p>
+        適用場景：你需要自訂累積邏輯——例如同時數好幾種類型、邊走邊更新 struct
+        欄位。
+      </p>
+      <pre><code>self.content.lines().fold(
+    LineStats { empty: 0, comment: 0, code: 0 },
+    |mut acc, line| {
+        match Report::classify_line(line) {
+            LineKind::Empty =&gt; acc.empty += 1,
+            LineKind::Comment =&gt; acc.comment += 1,
+            LineKind::Code =&gt; acc.code += 1,
+        }
+        acc
+    },
+)</code></pre>
+      <p>
+        注意 <code>mut acc</code> 跟
+        <code>let mut</code> 一樣：宣告區域變數可修改。不是
+        <code>&amp;mut</code>，沒有借用——是所有權 move 進出 closure。
+      </p>
+
+      <h2><code>.collect()</code>：交給標準 collection 組裝</h2>
+      <p>
+        <code>.collect()</code> 把 iterator 消耗掉、收進一個實作了
+        <code>FromIterator</code> 的型別。你必須告訴它目標型別——用
+        <code>let</code> 標注或回傳型別推斷皆可。
+      </p>
+      <table>
+        <thead>
+          <tr>
+            <th>目標型別</th>
+            <th>寫法</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><code>Vec&lt;T&gt;</code></td>
+            <td><code>let v: Vec&lt;_&gt; = iter.collect();</code></td>
+          </tr>
+          <tr>
+            <td><code>String</code></td>
+            <td><code>let s: String = chars.collect();</code></td>
+          </tr>
+          <tr>
+            <td><code>BTreeMap&lt;K, V&gt;</code></td>
+            <td><code>let m: BTreeMap&lt;_, _&gt; = pairs.collect();</code></td>
+          </tr>
+        </tbody>
+      </table>
+      <p>
+        <code>Vec&lt;_&gt;</code> 裡的
+        <code>_</code> 讓編譯器自己推斷元素型別。如果回傳型別已經寫清楚（如
+        <code>fn foo() -&gt; Vec&lt;&amp;str&gt;</code>），body 裡的
+        <code>.collect()</code> 不需要額外標注。
+      </p>
+      <p>
+        適用場景：結果是標準 collection、每個元素對應 collection
+        裡的一項。不需要自訂邏輯時優先用它。
+      </p>
+
+      <h2><code>.fold()</code> vs <code>.collect()</code></h2>
+      <table>
+        <thead>
+          <tr>
+            <th></th>
+            <th><code>.fold()</code></th>
+            <th><code>.collect()</code></th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>你提供</td>
+            <td>初始值 + closure</td>
+            <td>目標型別</td>
+          </tr>
+          <tr>
+            <td>邏輯由誰寫</td>
+            <td>你自己（closure 內）</td>
+            <td>標準庫（FromIterator）</td>
+          </tr>
+          <tr>
+            <td>典型情境</td>
+            <td>多計數器、跨行累積狀態</td>
+            <td>篩完收進 Vec、轉型後組字串</td>
+          </tr>
+        </tbody>
+      </table>
+
       <div class="callout tip">
         對照 TypeScript：<code>.filter()</code>／<code>.map()</code> 跟 JS
         陣列同名方法語意一致，<code>.count()</code> 相當於
@@ -127,6 +229,10 @@ let doubled: Vec&lt;i32&gt; = step.collect();   // 到這裡才真的跑</code><
           >rust-lang.tw</a
         >）。 對應課程：<a href="../lessons/0021-iterators.html"
           >Lesson 21 · 疊代器：filter / map / count</a
+        >、<a href="../lessons/0031-fold-single-pass.html"
+          >Lesson 31 · .fold() 單趟累積</a
+        >、<a href="../lessons/0032-collect-into-collection.html"
+          >Lesson 32 · .collect() 收進容器</a
         >。
       </p>
     </main>

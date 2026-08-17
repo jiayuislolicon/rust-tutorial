@@ -262,3 +262,9 @@ An iterator consumer that carries an accumulator through every element. The clos
 
 **Struct destructuring（結構解構）**:
 `let TypeName { field1, field2, .. } = expr;` — pulls named fields out of a struct into local variables, like TypeScript's `const { field1, field2 } = obj`. The type name is required (the compiler needs to know which struct). Use `..` to ignore fields you don't need. Same mechanism as tuple destructuring (`let (a, b) = ...`) but with names instead of positions — which means swapping the field order in the `let` pattern doesn't change semantics, because fields are matched by name, not position.
+
+**Field init shorthand（欄位初始化縮寫）**:
+When a variable has the same name as a struct field, `TypeName { field }` is shorthand for `TypeName { field: field }`. Works in struct literals and patterns. Same idea as JavaScript's `{ x }` shorthand for `{ x: x }`. Applies to any named-field struct or enum variant.
+
+**Type placeholder `_`（型別佔位符）**:
+An underscore in a type annotation tells the compiler "infer this part yourself." `Vec<_>` means "I want a Vec; figure out the element type from context." The compiler needs *some* type information from you (e.g. the container is `Vec`, not `HashSet`) but can fill in the rest from the iterator or return type. Common with `.collect()`, which can produce many different collection types. Not the same as `_` in a pattern (which means "ignore this value").
