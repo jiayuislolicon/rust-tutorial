@@ -49,29 +49,21 @@ impl Report {
     }
 
     pub fn line_stats(&self) -> LineStats {
-        let empty = self
-            .content
-            .lines()
-            .filter(|line| matches!(Report::classify_line(line), LineKind::Empty))
-            .count();
-
-        let comment = self
-            .content
-            .lines()
-            .filter(|line| matches!(Report::classify_line(line), LineKind::Comment))
-            .count();
-
-        let code = self
-            .content
-            .lines()
-            .filter(|line| matches!(Report::classify_line(line), LineKind::Code))
-            .count();
-
-        LineStats {
-            empty,
-            comment,
-            code,
-        }
+        self.content.lines().fold(
+            LineStats {
+                empty: 0,
+                comment: 0,
+                code: 0,
+            },
+            |mut acc, line| {
+                match Report::classify_line(line) {
+                    LineKind::Empty => acc.empty += 1,
+                    LineKind::Comment => acc.comment += 1,
+                    LineKind::Code => acc.code += 1,
+                }
+                acc
+            },
+        )
     }
 
     pub fn line_count(&self) -> usize {

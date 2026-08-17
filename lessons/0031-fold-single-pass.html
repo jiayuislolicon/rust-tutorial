@@ -1,0 +1,304 @@
+<!doctype html>
+<html lang="zh-Hant">
+  <head>
+    <meta charset="UTF-8" />
+    <title>Lesson 31 · 三次變一次：用 .fold() 累加結果</title>
+    <link rel="stylesheet" href="../assets/style.css" />
+    <script src="../assets/quiz.js"></script>
+  </head>
+  <body>
+    <main>
+      <div class="kicker">Lesson 0031 · Rust · CLI 工具養成路線</div>
+      <h1>三次變一次：用 <code>.fold()</code> 累加結果</h1>
+      <div class="byline">
+        <strong>學習目標：</strong>你的 <code>line_stats()</code> 對同一份文字掃了三遍，每遍只數一種行。你會用 <code>.fold()</code> 把它改成一次走完——邊走邊把計數累加進 <code>LineStats</code> 裡。
+      </div>
+
+      <h2>1. 同一條路，走了三遍</h2>
+
+      <p>
+        打開 <code>hello_cli/src/report.rs</code>，找到 <code>line_stats()</code>：
+      </p>
+
+      <pre><code>pub fn line_stats(&amp;self) -&gt; LineStats {
+    let empty = self.content.lines()
+        .filter(|line| matches!(Report::classify_line(line), LineKind::Empty))
+        .count();
+
+    let comment = self.content.lines()
+        .filter(|line| matches!(Report::classify_line(line), LineKind::Comment))
+        .count();
+
+    let code = self.content.lines()
+        .filter(|line| matches!(Report::classify_line(line), LineKind::Code))
+        .count();
+
+    LineStats { empty, comment, code }
+}</code></pre>
+
+      <p>
+        三段程式碼的結構完全一樣：取得所有行、過濾出一種、數有幾個。差別只在 <code>matches!</code> 裡比對的是哪個 <code>LineKind</code>。每一段都呼叫了 <code>.lines()</code>，所以同一份文字被從頭到尾掃了三遍。
+      </p>
+
+      <p>
+        <code>LineKind</code> 只有三個 variant，掃三遍在效能上幾乎感覺不出來。但問題出在結構上：三段幾乎一模一樣的程式碼，以後要改就得改三次。如果再加一種行——比如 <code>LineKind::DocComment</code>——你得複製第四段，然後在 <code>LineStats</code> 加一個欄位。漏掉任何一步，編譯器不一定會提醒你。
+      </p>
+
+      <p>
+        更自然的做法是：走一遍，每看到一行就判斷它是什麼，把對應的計數器加 1。這正是 <code>.fold()</code> 在做的事。
+      </p>
+
+      <h2>2. <code>.fold()</code>：帶一個袋子走完整段路</h2>
+
+      <p>
+        上一節說要走一遍——<code>.fold()</code> 就是讓你邊走邊累加的工具。你可以把它想成帶著一個袋子從頭走到尾；在 API 裡，那個袋子叫做累加器。
+      </p>
+
+      <p>
+        你已經用過 <code>.filter()</code>、<code>.map()</code>、<code>.count()</code>——它們各自只做一件事。<code>.fold()</code> 則把動作交給你決定：
+      </p>
+
+      <pre><code>iterator.fold(初始值, |累加器, 元素| {
+    // 用元素更新累加器
+    累加器
+})</code></pre>
+
+      <p>兩個參數：</p>
+
+      <ol>
+        <li>
+          <strong>初始值</strong>——你帶著出發的累加器。可以是一個數字（從 0 開始加）、一個 struct（欄位全部歸零）、甚至一個 <code>Vec</code>。型別由你決定。
+        </li>
+        <li>
+          <strong>一個 closure</strong>——每走一步，<code>.fold()</code> 把目前的累加器和當前元素一起交給它。closure 處理完之後，必須把累加器交回來，下一步才能繼續用。
+        </li>
+      </ol>
+
+      <p>
+        走完全部元素之後，<code>.fold()</code> 把最終的累加器當作回傳值。跟 <code>.count()</code> 一樣，它是<strong>消耗性</strong>的方法——呼叫之後疊代器就沒了。
+      </p>
+
+      <p>先用一個最小的例子：</p>
+
+      <pre><code>let total = [1, 2, 3].iter().fold(0, |acc, n| acc + n);
+// total == 6</code></pre>
+
+      <p>
+        初始值是 <code>0</code>。第一步 <code>0 + 1 = 1</code>，第二步 <code>1 + 2 = 3</code>，第三步 <code>3 + 3 = 6</code>。走完，回傳 <code>6</code>。
+      </p>
+
+      <p>
+        如果你用過 JavaScript 的 <code>Array.prototype.reduce()</code>，<code>.fold()</code> 就是同一件事——只是 Rust 總是要求你明確給初始值，沒有「用第一個元素當初始值」的省略寫法。
+      </p>
+
+      <h2>3. 把 <code>line_stats()</code> 改成一次走完</h2>
+
+      <p>
+        現在把累加器換成 <code>LineStats</code>——三個欄位都從 0 開始。每看到一行，用 <code>classify_line</code> 判斷它是哪一種，然後把對應的計數器加 1：
+      </p>
+
+      <div class="compare compare-before">
+        <div class="kicker">🔴 修改前 —— 三次 .lines()，三次 .filter().count()</div>
+        <pre><code>pub fn line_stats(&amp;self) -&gt; LineStats {
+    let empty = self.content.lines()
+        .filter(|line| matches!(Report::classify_line(line), LineKind::Empty))
+        .count();
+
+    let comment = self.content.lines()
+        .filter(|line| matches!(Report::classify_line(line), LineKind::Comment))
+        .count();
+
+    let code = self.content.lines()
+        .filter(|line| matches!(Report::classify_line(line), LineKind::Code))
+        .count();
+
+    LineStats { empty, comment, code }
+}</code></pre>
+      </div>
+
+      <div class="compare compare-after">
+        <div class="kicker">🟢 修改後 —— 一次 .lines()，一次 .fold()</div>
+        <pre><code>pub fn line_stats(&amp;self) -&gt; LineStats {
+    self.content.lines().fold(
+        LineStats { empty: 0, comment: 0, code: 0 },
+        |mut acc, line| {
+            match Report::classify_line(line) {
+                LineKind::Empty =&gt; acc.empty += 1,
+                LineKind::Comment =&gt; acc.comment += 1,
+                LineKind::Code =&gt; acc.code += 1,
+            }
+            acc
+        },
+    )
+}</code></pre>
+      </div>
+
+      <p>逐行來看這個 closure：</p>
+
+      <ul>
+        <li>
+          <code>|mut acc, line|</code>——兩個參數。<code>acc</code> 是累加器，型別是 <code>LineStats</code>；<code>line</code> 是當前這一行。<code>mut</code> 寫在 <code>acc</code> 前面，因為你要修改它的欄位。
+        </li>
+        <li>
+          <code>match Report::classify_line(line)</code>——Lesson 30 之前你就有這個函式了，它回傳 <code>LineKind</code>。<code>match</code> 把三個 variant 各自對應到一個 <code>+= 1</code>。
+        </li>
+        <li>
+          最後一行 <code>acc</code>——把更新過的累加器交回去，<code>.fold()</code> 才能帶著它走下一步。少了這行，closure 的回傳型別就不是 <code>LineStats</code>，編譯器會報錯。
+        </li>
+      </ul>
+
+      <h2>4. <code>mut acc</code> 不是 <code>&amp;mut</code></h2>
+
+      <p>
+        注意 closure 參數寫的是 <code>mut acc</code>，不是 <code>&amp;mut acc</code>。這裡的 <code>mut</code> 跟你寫 <code>let mut x = 5;</code> 是同一回事：宣告這個區域變數可以被修改。<code>.fold()</code> 在每一步都把累加器的<strong>所有權</strong>交給 closure，closure 改完之後再把所有權交回去。整個過程沒有借用，只有 move 進來、move 出去。
+      </p>
+
+      <p>如果你把 <code>mut</code> 拿掉，編譯器會報錯：</p>
+
+      <pre><code>error[E0594]: cannot assign to `acc.empty`, as `acc` is not declared as mutable
+  |
+  |         |acc, line| {
+  |          --- help: consider changing this to be mutable: `mut acc`</code></pre>
+
+      <p>
+        跟 <code>let x = 5; x += 1;</code> 失敗是同一個道理。closure 的參數就是區域變數，寫不寫 <code>mut</code> 決定你能不能改它。
+      </p>
+
+      <h2>5. 跑測試，什麼都不該變</h2>
+
+      <p>把修改存檔，跑 <code>cargo test</code>：</p>
+
+      <pre><code>running 6 tests
+test report::tests::classify_line_code ... ok
+test report::tests::classify_line_comment ... ok
+test report::tests::classify_line_empty ... ok
+test report::tests::line_stats ... ok
+test report::tests::summary_agrees_with_line_stats ... ok
+test report::tests::word_counts ... ok
+
+test result: ok. 6 passed; 0 failed</code></pre>
+
+      <p>
+        六個測試全過。行為沒有任何改變——你改的是實作方式，不是結果。這正是 Lesson 30 加上 <code>LineStats</code> 和 <code>assert_eq!</code> 之後帶來的保障：只要測試還是綠的，你可以放心重寫裡面的邏輯。
+      </p>
+
+      <h2>6. <code>.fold()</code> 的型別怎麼推導</h2>
+
+      <p>
+        你沒有在任何地方標註 <code>acc</code> 或 <code>line</code> 的型別，但編譯器全都知道。推導的鏈條是這樣的：
+      </p>
+
+      <ol>
+        <li>
+          初始值是 <code>LineStats { empty: 0, ... }</code>，所以累加器的型別是
+          <code>LineStats</code>。
+        </li>
+        <li>
+          <code>.lines()</code> 產生 <code>&amp;str</code>，所以
+          <code>line</code> 是 <code>&amp;str</code>。
+        </li>
+        <li>
+          <code>.fold()</code> 的回傳型別等於累加器的型別，也就是
+          <code>LineStats</code>——剛好是函式簽名裡宣告的回傳型別。
+        </li>
+      </ol>
+
+      <p>
+        這跟你在 Lesson 25 學到的 closure 型別推導是同一件事：編譯器看呼叫的上下文，就能確定每個參數和回傳值的型別。你不需要寫出來，但你要能在腦中追得出來。
+      </p>
+
+      <h2>7. 什麼時候用 <code>.fold()</code>，什麼時候不用</h2>
+
+      <p>
+        <code>.fold()</code> 的強項是把多件事合併成一次走完。如果你只是要做一件事——過濾、計數、轉換——用 <code>.filter()</code>、<code>.count()</code>、<code>.map()</code> 更直接。它們各自只做一個動作，一眼就知道發生了什麼。
+      </p>
+
+      <p>
+        該用 <code>.fold()</code> 的訊號通常是：你發現自己對同一個疊代器寫了好幾段 <code>.filter().count()</code> 或 <code>.filter().map().collect()</code>，每段只在條件上不同。這時候合併成一次 <code>.fold()</code>，既減少重複，也確保所有計數在同一次遍歷中完成。
+      </p>
+
+      <h2>8. 看看你記得多少</h2>
+
+      <div class="quiz" data-mcq data-answer="2">
+        <div class="q">
+          <code>.fold(初始值, |acc, x| { ... })</code> 裡的 closure
+          最後一定要做什麼？
+        </div>
+        <div class="choices">
+          <button>呼叫 .next() 取得下一個元素</button>
+          <button>把 acc 交回去，讓下一步繼續用</button>
+          <button>印出 acc 的內容</button>
+          <button>呼叫 .collect() 收集結果</button>
+        </div>
+        <div
+          class="feedback"
+          data-ok="答對了。closure 的最後一個 expression 就是回傳值，.fold() 會把它當作下一步的累加器。少了這行，型別就對不上。"
+          data-bad="再看一次 closure 的最後一行。.fold() 要的不是印出什麼或收集什麼——它要的是你把更新過的累加器交回來，讓下一步繼續用。"
+        ></div>
+      </div>
+
+      <div class="quiz" data-mcq data-answer="3">
+        <div class="q">
+          closure 參數寫 <code>|mut acc, line|</code>，這個
+          <code>mut</code> 的作用是？
+        </div>
+        <div class="choices">
+          <button>把 acc 宣告為可變借用 &amp;mut</button>
+          <button>讓 .fold() 可以被呼叫多次</button>
+          <button>讓 acc 在 closure 內部可以被修改，跟 let mut 一樣</button>
+          <button>把 acc 的型別從 LineStats 變成 &amp;mut LineStats</button>
+        </div>
+        <div
+          class="feedback"
+          data-ok="答對了。closure 的參數就是區域變數。mut acc 只是說「這個變數可以改」，跟 let mut acc 完全一樣。它不是引用，是所有權的轉移。"
+          data-bad="再想一下… 如果是 &amp;mut，修改會透過引用直接發生，你就不需要在最後把 acc 交回去了。但 .fold() 要求你交回去——回想一下上面 mut acc 和所有權是怎麼 move 進出 closure 的。"
+        ></div>
+      </div>
+
+      <div class="quiz" data-mcq data-answer="4">
+        <div class="q">
+          原本的 <code>line_stats()</code> 呼叫了幾次
+          <code>.lines()</code>？改用 <code>.fold()</code> 之後呢？
+        </div>
+        <div class="choices">
+          <button>1 次 → 1 次，沒有差別</button>
+          <button>2 次 → 1 次</button>
+          <button>3 次 → 2 次</button>
+          <button>3 次 → 1 次</button>
+        </div>
+        <div
+          class="feedback"
+          data-ok="答對了。原本每種 LineKind 各掃一遍，共三次。.fold() 版本只掃一遍，在 match 裡分流到不同的計數器。"
+          data-bad="再看一次… 數一下原本程式碼裡有幾個 self.content.lines()，再對照 .fold() 版本裡有幾個。"
+        ></div>
+      </div>
+
+      <div class="win">
+        <div class="kicker">這一課的成果</div>
+        你把三段結構相同的 <code>.filter().count()</code> 合併成一個 <code>.fold()</code>，一次走完所有行。你學到了 <code>.fold()</code> 需要一個初始值和一個 closure——每一步 closure 都拿到累加器和當前元素，處理完之後要把累加器交回來。<br /><br />
+        這個改動之所以安全，是因為 Lesson 30 留下的測試替你把關：行為不變，測試就會是綠的。下次你發現自己對同一個疊代器寫了好幾段幾乎一樣的程式碼，<code>.fold()</code> 就是把它們收攏成一次遍歷的工具。<br /><br />
+        速查表：<a href="../reference/iterators.html">疊代器：filter / map / count / fold / collect</a>。
+      </div>
+
+      <p class="source">
+        主要參考資料：<a
+          href="https://doc.rust-lang.org/book/ch13-02-iterators.html"
+          target="_blank"
+          >The Rust Programming Language — Ch 13.2: Processing a Series of Items with Iterators</a
+        >。重構前後皆從 <code>hello_cli/src/report.rs</code> 實際測試驗證。
+      </p>
+
+      <nav class="lesson-links">
+        <a href="0030-tuple-to-struct-derive-in-practice.html"
+          >&larr; 上一課：Tuple 變 struct</a
+        >
+        <a href="#">下一課：待訂 &rarr;</a>
+      </nav>
+
+      <p class="ask-agent">
+        卡住了、或有任何看不懂的地方，直接問我（你的 AI 教學助手）就好 ——
+        隨時可以打斷這個流程提問。
+      </p>
+    </main>
+  </body>
+</html>
