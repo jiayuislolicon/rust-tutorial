@@ -67,6 +67,29 @@ add_line(&amp;mut text);                  // ← 呼叫處
 
 三個都要寫，少一個就編不過。</code></pre>
 
+<h2>Lifetime 省略規則</h2>
+<pre><code>編譯器在你沒寫 'a 時，依序嘗試三條規則：
+
+1. 每個 reference 參數各得一個 lifetime
+   fn f(a: &amp;str, b: &amp;str) → fn f&lt;'a, 'b&gt;(a: &amp;'a str, b: &amp;'b str)
+
+2. 如果只有一個 reference 輸入，輸出用它的 lifetime
+   fn f(s: &amp;str) -> &amp;str → fn f&lt;'a&gt;(s: &amp;'a str) -> &amp;'a str
+
+3. 如果有 &amp;self / &amp;mut self，輸出用 self 的 lifetime
+   fn f(&amp;self) -> &amp;str → fn f&lt;'a&gt;(&amp;'a self) -> &amp;'a str
+
+三條都套完仍無法確定 → 編譯器報錯，你必須手寫 'a。</code></pre>
+
+<h2>什麼時候必須手寫 Lifetime</h2>
+<pre><code>1. 函式有兩個以上 reference 輸入，且回傳 reference：
+   fn longer&lt;'a&gt;(a: &amp;'a str, b: &amp;'a str) -> &amp;'a str
+
+2. struct 裡存放 reference：
+   struct Excerpt&lt;'a&gt; { text: &amp;'a str }
+
+記住：'a 是標籤，不是型別。它告訴編譯器「這些 reference 來自同一個來源」。</code></pre>
+
 <h2>為什麼要有這些規則</h2>
 <pre><code>單一擁有者      → 避免 double free（同一塊記憶體釋放兩次）
 &amp; / &amp;mut 互斥   → 避免資料競爭（一邊改，一邊有人在讀）
@@ -83,7 +106,7 @@ add_line(&amp;mut text);                  // ← 呼叫處
 
 <p class="source">
 來源：<a href="https://doc.rust-lang.org/book/ch04-01-what-is-ownership.html" target="_blank">The Rust Book — 4.1 What is Ownership?</a>、<a href="https://doc.rust-lang.org/book/ch04-02-references-and-borrowing.html" target="_blank">4.2 References and Borrowing</a>（繁中版：<a href="https://rust-lang.tw/book-tw/ch04-01-what-is-ownership.html" target="_blank">rust-lang.tw</a>）。
-對應課程：<a href="../lessons/0010-ownership-and-move.html">Lesson 10 · Ownership</a>、<a href="../lessons/0011-borrowing-and-references.html">Lesson 11 · Borrowing</a>。
+對應課程：<a href="../lessons/0010-ownership-and-move.html">Lesson 10 · Ownership</a>、<a href="../lessons/0011-borrowing-and-references.html">Lesson 11 · Borrowing</a>、<a href="../lessons/0034-lifetimes.html">Lesson 34 · Lifetime</a>。
 </p>
 
 </main>

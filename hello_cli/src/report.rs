@@ -78,14 +78,14 @@ impl Report {
             .collect()
     }
 
-    pub fn word_counts(&self) -> BTreeMap<String, usize> {
+    pub fn word_counts(&self) -> BTreeMap<&str, usize> {
         let mut counts = BTreeMap::new();
 
         for word in self.content.split_whitespace() {
-            *counts.entry(word.to_string()).or_insert(0) += 1;
+            *counts.entry(word).or_insert(0) += 1;
         }
 
-        return counts;
+        counts
     }
 }
 
