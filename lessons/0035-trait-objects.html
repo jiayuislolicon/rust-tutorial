@@ -1,0 +1,410 @@
+<!doctype html>
+<html lang="zh-Hant">
+  <head>
+    <meta charset="UTF-8" />
+    <title>Lesson 35 · Trait Object — 在執行時才決定呼叫誰</title>
+    <link rel="stylesheet" href="../assets/style.css" />
+    <script src="../assets/quiz.js"></script>
+  </head>
+  <body>
+    <main>
+      <div class="kicker">Lesson 0035 · Rust · CLI 工具養成路線</div>
+      <h1>Trait Object — 在執行時才決定呼叫誰</h1>
+      <div class="byline">
+        <strong>學習目標：</strong>你的工具目前只會用固定格式印報告。使用者想要
+        <code>--format json</code
+        >，你也想加這個功能。問題在於：要用哪種格式，要到
+        <strong>執行時</strong
+        >才知道——沒辦法在寫程式時就寫死在型別裡。這一課你會用
+        <strong>trait object</strong>（<code>Box&lt;dyn Trait&gt;</code
+        >），讓程式依使用者的選擇，在執行時呼叫正確的實作。
+      </div>
+
+      <h2>1. 泛型做不到的事</h2>
+
+      <p>
+        寫一個函式
+        <code>fn print_it&lt;T: Display&gt;(val: T)</code>，編譯器會為每個用到的
+        <code>T</code> 各產生一份專屬的機器碼——這叫<strong
+          >靜態派發（static dispatch）</strong
+        >。呼叫時直接跳到正確的函式，不需要查表，所以很快。
+      </p>
+
+      <p>
+        但你的 <code>--format</code> 旗標是在 parse 命令列之後才決定要用 plain
+        還是 json。在 parse 完成之前，你根本不知道該用哪種
+        formatter。你可能會想寫：
+      </p>
+
+      <pre><code>fn pick_formatter(name: &amp;str) -> ??? {
+    match name {
+        "plain" => PlainFormatter,
+        "json"  => JsonFormatter,
+        _ => panic!(),
+    }
+}</code></pre>
+
+      <p>
+        回傳型別填什麼？<code>PlainFormatter</code> 和
+        <code>JsonFormatter</code> 是兩個不同的 struct——大小、layout
+        都不一樣，沒辦法塞進同一個回傳型別的位置。泛型在編譯期就要確定型別；但這裡的選擇，要等到
+        <em>使用者跑程式的那一刻</em>才知道。
+      </p>
+
+      <h2>2. Trait Object：把型別藏進 Box</h2>
+
+      <p>
+        解法是
+        <strong>trait object</strong
+        >。你不再告訴編譯器具體是哪個型別，而是說：「我不知道是誰，但它一定實作了某個
+        trait。」寫法是 <code>Box&lt;dyn Formatter&gt;</code>，拆開來看：
+      </p>
+
+      <ul>
+        <li>
+          <code>dyn Formatter</code> — 「某個實作了
+          <code>Formatter</code> 的型別，但我現在不說是誰」
+        </li>
+        <li>
+          <code>Box&lt;...&gt;</code> — 把它放到 heap
+          上。編譯器不知道具體型別的大小，沒辦法在 stack 上分配固定空間
+        </li>
+      </ul>
+
+      <p>
+        呼叫方法時，程式會先查一張小表（vtable），找到正確的函式指標，再跳過去——這叫
+        <strong>動態派發（dynamic dispatch）</strong
+        >。比起靜態派發多了一次間接跳轉，但在 CLI
+        工具這個層級，差異完全可以忽略。
+      </p>
+
+      <h2>3. 定義 Formatter trait</h2>
+
+      <p>
+        新建 <code>hello_cli/src/formatter.rs</code>，定義一個 trait
+        和兩種實作：
+      </p>
+
+      <pre><code>use crate::report::Report;
+
+pub trait Formatter {
+    fn format_report(&amp;self, report: &amp;Report) -> String;
+}
+
+pub struct PlainFormatter;
+
+impl Formatter for PlainFormatter {
+    fn format_report(&amp;self, report: &amp;Report) -> String {
+        let stats = report.line_stats();
+        format!(
+            "{}\n{}\n{}",
+            report.summary(),
+            report.content,
+            stats
+        )
+    }
+}
+
+pub struct JsonFormatter;
+
+impl Formatter for JsonFormatter {
+    fn format_report(&amp;self, report: &amp;Report) -> String {
+        let stats = report.line_stats();
+        format!(
+            "{{
+  \"filename\": \"{}\",
+  \"lines\": {},
+  \"empty\": {},
+  \"comment\": {},
+  \"code\": {}
+}}",
+            report.filename,
+            report.line_count(),
+            stats.empty,
+            stats.comment,
+            stats.code,
+        )
+    }
+}</code></pre>
+
+      <p>
+        兩個 struct 都是零大小型別（zero-sized type,
+        ZST）——它們不存任何資料，只是用來掛
+        <code>impl Formatter</code>。這裡它們大小相同只是巧合；對 trait object
+        來說，背後的 struct 就算大小不同也沒關係。
+      </p>
+
+      <h2>4. 工廠函式回傳 <code>Box&lt;dyn Formatter&gt;</code></h2>
+
+      <p>
+        trait 和實作都就位了，接下來寫一個函式，依使用者選的格式回傳對應的
+        formatter：
+      </p>
+
+      <pre><code>pub fn make_formatter(format: &amp;str) -> Option&lt;Box&lt;dyn Formatter&gt;&gt; {
+    match format {
+        "plain" => Some(Box::new(PlainFormatter)),
+        "json"  => Some(Box::new(JsonFormatter)),
+        _       => None,
+    }
+}</code></pre>
+
+      <p>
+        <code>Box::new(PlainFormatter)</code> 做了兩件事：把
+        <code>PlainFormatter</code>（一個具體型別）放到 heap 上，再附上 vtable
+        指標——合起來就是一個 trait object。回傳出去之後，呼叫端只知道「這東西會
+        <code>format_report()</code>」，不需要也不應該知道底層是哪個 struct。
+      </p>
+
+      <h2>5. 在 main 裡使用</h2>
+
+      <p>
+        最後把這一切接到 <code>main.rs</code>。先加入
+        <code>--format</code> 的解析，再呼叫 <code>make_formatter()</code>：
+      </p>
+
+      <pre><code>"--format" => match args.next() {
+    Some(value) => format = value,
+    None => return Err(AppError::MissingValue("--format".to_string())),
+},</code></pre>
+
+      <p>使用時：</p>
+
+      <pre><code>let formatter = make_formatter(&amp;format)
+    .ok_or_else(|| AppError::UnknownFlag(format!("--format {}", format)))?;
+
+println!("{}", formatter.format_report(&amp;report));</code></pre>
+
+      <p>
+        這裡有一個小環節值得拆開看。<code>make_formatter()</code> 回傳的是
+        <code>Option&lt;Box&lt;dyn Formatter&gt;&gt;</code
+        >：如果使用者輸入的是我們支援的格式，就會得到
+        <code>Some(formatter)</code>；如果格式不認識，就會得到
+        <code>None</code>。
+      </p>
+
+      <p>
+        但 <code>run()</code> 需要回傳的是 <code>Result</code>。所以當
+        <code>make_formatter()</code> 得到 <code>None</code> 時，我們不能直接用
+        <code>?</code> 返回，必須先把這個
+        <code>None</code> 轉成一個具體的錯誤，例如 <code>AppError</code>。
+      </p>
+
+      <p><code>.ok_or_else(|| ...)</code> 就是在做這個轉換：</p>
+
+      <pre><code>Some(formatter)  →  Ok(formatter)
+None             →  Err(AppError)</code></pre>
+
+      <p>
+        轉換成 <code>Result</code> 之後，就可以使用 <code>?</code>： 如果是
+        <code>Ok</code>，繼續往下執行；如果是 <code>Err</code>，就提早從
+        <code>run()</code> 返回錯誤。
+      </p>
+
+      <p>所以這段：</p>
+
+      <pre><code>let formatter = make_formatter(&amp;format)
+    .ok_or_else(|| AppError::UnknownFlag(format!("--format {}", format)))?;</code></pre>
+
+      <p>
+        可以把它讀成：「取得 formatter；如果找不到，就把
+        <code>None</code> 變成這個 <code>AppError</code>，然後交給
+        <code>?</code> 處理。」
+      </p>
+
+      <p>
+        formatter 的型別是
+        <code>Option&lt;Box&lt;dyn Formatter&gt;&gt;</code>。當你呼叫
+        <code>.format_report()</code> 時，Rust 會在執行時透過 vtable
+        找到實際型別對應的實作並呼叫它。對你來說，寫法和呼叫一般方法一樣；差別只在於
+        Rust 是在執行時才決定實際要呼叫哪個實作。
+      </p>
+
+      <h2>6. 試跑一下</h2>
+
+      <pre><code>$ cargo run -- hello_cli/src/main.rs
+main.rs：共 70 行
+...
+空行 4 行，註解 0 行，程式碼 66 行
+
+$ cargo run -- --format json hello_cli/src/main.rs
+{
+  "filename": "hello_cli/src/main.rs",
+  "lines": 70,
+  "empty": 4,
+  "comment": 0,
+  "code": 66
+}</code></pre>
+
+      <p>
+        同一行 <code>formatter.format_report()</code>，使用者選 plain 就走 plain
+        的路，選 json 就走 json 的路——動態派發就是在做這件事。
+      </p>
+
+      <h2>7. 泛型 vs trait object：何時用哪個</h2>
+
+      <p>
+        泛型和 trait object 都可以讓我們使用「實作了某個 trait
+        的型別」，但最大的差別在於：
+        <strong>Rust 什麼時候知道這個具體型別是誰？</strong>
+      </p>
+
+      <p>如果在<strong>編譯程式時就知道</strong>具體型別，可以使用泛型：</p>
+
+      <pre><code>fn print_report&lt;F: Formatter&gt;(formatter: F, report: &amp;Report) { println!("{}", formatter.format_report(report)); } print_report(PlainFormatter, &amp;report);</code></pre>
+
+      <p>
+        這裡呼叫 <code>print_report()</code> 時，Rust 已經知道 <code>F</code> 是
+        <code>PlainFormatter</code>。 如果另一個地方傳入
+        <code>JsonFormatter</code>，Rust 也知道那一次的 <code>F</code> 是
+        <code>JsonFormatter</code>。
+        因此編譯器可以在編譯期決定要呼叫哪個實作——這就是
+        <strong>靜態派發（static dispatch）</strong>。
+      </p>
+
+      <p>
+        但
+        <code>--format</code>
+        的情況不一樣。程式編譯時，我們不知道使用者最後會輸入
+        <code>plain</code> 還是
+        <code>json</code>。必須等程式啟動、解析完命令列參數後，
+        才能決定要建立哪一個 formatter。
+      </p>
+
+      <pre><code>程式編譯
+  ↓ 
+程式啟動
+  ↓ 
+讀取 --format
+  ↓
+使用者輸入 "json"
+  ↓
+現在才知道要用 JsonFormatter</code></pre>
+
+      <p>這時候就適合使用 trait object：</p>
+
+      <pre><code>Box&lt;dyn Formatter&gt;</code></pre>
+
+      <p>
+        它代表：「我現在不知道具體是哪個 formatter，但我知道它一定實作了
+        <code>Formatter</code>。」 等到程式執行時選出具體的 formatter 後，Rust
+        再透過 vtable 找到正確的實作。 這就是
+        <strong>動態派發（dynamic dispatch）</strong>。
+      </p>
+
+      <p>所以可以先記住一個很實用的判斷方式：</p>
+
+      <ul>
+        <li><strong>編譯期就知道具體型別 → 泛型</strong></li>
+        <li><strong>要等執行時才知道具體型別 → Trait Object</strong></li>
+      </ul>
+
+      <p>
+        注意：不是「有很多不同型別」就一定要用 trait object。 即使有
+        <code>PlainFormatter</code>、<code>JsonFormatter</code> 和
+        <code>XmlFormatter</code>，只要呼叫函式時 Rust
+        已經知道傳入的是哪一個型別， 仍然可以使用泛型。
+      </p>
+
+      <p>
+        真正重要的不是「有幾種型別」，而是：
+        <strong>在這個位置，具體型別現在知不知道？</strong>
+      </p>
+
+      <p>
+        回到你的 CLI：format 的選擇來自使用者輸入，編譯期無從得知——這正是 trait
+        object 最典型、也最該出場的場景。
+      </p>
+
+      <h2>8. 檢查你記得多少</h2>
+
+      <div class="quiz" data-mcq data-answer="2">
+        <div class="q">
+          <code>Box&lt;dyn Formatter&gt;</code> 裡的 <code>dyn</code> 代表什麼？
+        </div>
+        <div class="choices">
+          <button>表示 Formatter 是一個 dynamic crate，需要在執行時載入</button>
+          <button>
+            表示這是動態派發——具體型別在執行時才確定，透過 vtable 呼叫方法
+          </button>
+          <button>表示這個 trait 只能在 unsafe 區塊使用</button>
+          <button>表示 Box 的大小會在執行時動態變化</button>
+        </div>
+        <div
+          class="feedback"
+          data-ok="答對了。<code>dyn</code> 是 dynamic 的縮寫——它告訴編譯器：這個位置存的是 trait object，呼叫方法時要透過 vtable 找到正確的實作。"
+          data-bad="再想一下… <code>dyn Formatter</code> 裡的 dyn 是 dynamic 的意思。為什麼需要「動態」？因為編譯器在這個位置無法確定具體型別——它得等到執行時查表，才能呼叫正確的方法。"
+        ></div>
+      </div>
+
+      <div class="quiz" data-mcq data-answer="3">
+        <div class="q">
+          為什麼 trait object 需要 <code>Box</code>（或其他指標）包起來？
+        </div>
+        <div class="choices">
+          <button>因為 trait 裡的方法太多，stack 放不下</button>
+          <button>因為 Rust 規定所有 trait 都必須放在 heap 上</button>
+          <button>
+            因為編譯器不知道具體型別的大小，無法在 stack 上分配固定空間
+          </button>
+          <button>因為 Box 會自動幫你 clone 資料</button>
+        </div>
+        <div
+          class="feedback"
+          data-ok="答對了。stack 上的變數必須在編譯期就知道大小。<code>dyn Formatter</code> 背後可能是任何實作了 Formatter 的 struct——大小各不相同。Box 把值放到 heap，自己只佔一個指標的大小，放在 stack 上。"
+          data-bad="再想一下… stack 上每個變數的大小都必須在編譯期確定。但 <code>dyn Formatter</code> 背後是哪個 struct？可能是 4 bytes，也可能是 400 bytes。編譯器無從得知——所以需要一個固定大小的指標（Box）來間接存取。"
+        ></div>
+      </div>
+
+      <div class="quiz" data-mcq data-answer="1">
+        <div class="q">什麼情況下你應該用泛型，而不是 trait object？</div>
+        <div class="choices">
+          <button>
+            在編譯期就知道型別，且需要最佳效能（例如呼叫頻繁的 hot path）
+          </button>
+          <button>當你有超過三個不同的 struct 實作同一個 trait 時</button>
+          <button>當你不想定義 trait，只想用 struct 時</button>
+          <button>永遠不應該用泛型——trait object 是泛型的上位取代</button>
+        </div>
+        <div
+          class="feedback"
+          data-ok="答對了。型別在編譯期就能確定時，泛型讓編譯器為每個型別產生專屬的機器碼——沒有 vtable 查表、可以 inline。在效能敏感的 hot path 上，這個差異是有意義的。"
+          data-bad="再想一下… 泛型（靜態派發）的優勢是：編譯器在編譯期就知道具體型別，能直接呼叫、甚至 inline 方法，省去執行時的 vtable 查表。什麼時候這個優勢最有價值？"
+        ></div>
+      </div>
+
+      <div class="win">
+        <div class="kicker">這一課的成果</div>
+        你加了一個 <code>--format</code> 旗標，讓工具能用 JSON
+        格式輸出報告。背後是一個 <code>Formatter</code> trait 加上兩個實作，透過
+        <code>Box&lt;dyn Formatter&gt;</code>
+        在執行時選出正確的那一個。<br /><br />
+        你也學會分辨<strong>靜態派發</strong>（泛型、編譯期決定、零成本）和<strong>動態派發</strong>（trait
+        object、執行時決定、多一次 vtable
+        查表）。記住這個經驗法則：選擇在編譯期就能確定——用泛型；要等到執行時才知道——用
+        trait object。
+      </div>
+
+      <p class="source">
+        主要參考資料：<a
+          href="https://doc.rust-lang.org/book/ch17-02-trait-objects.html"
+          target="_blank"
+          >The Rust Programming Language — Using Trait Objects That Allow for
+          Values of Different Types</a
+        >。所有改動皆在 <code>hello_cli/</code> 下測試通過。
+      </p>
+
+      <nav class="lesson-links">
+        <a href="0034-lifetimes.html"
+          >&larr; 上一課：Lifetime — 編譯器怎麼知道 reference 活多久</a
+        >
+        <a href="#">下一課：TBD &rarr;</a>
+      </nav>
+
+      <p class="ask-agent">
+        卡住了、或有任何看不懂的地方，直接問我（你的 AI 教學助手）就好 ——
+        隨時可以打斷這個流程提問。
+      </p>
+    </main>
+  </body>
+</html>

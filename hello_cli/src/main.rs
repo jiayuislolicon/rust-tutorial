@@ -1,9 +1,11 @@
 mod errors;
+mod formatter;
 mod report;
 
 use errors::AppError;
 use std::env;
 
+use formatter::make_formatter;
 use report::load_report;
 
 fn run() -> Result<(), AppError> {
@@ -12,6 +14,7 @@ fn run() -> Result<(), AppError> {
     let mut words_count_only: bool = false;
     let mut min: usize = 1;
     let mut args = env::args().skip(1);
+    let mut format = String::from("plain");
 
     while let Some(arg) = args.next() {
         match arg.as_str() {
@@ -21,10 +24,17 @@ fn run() -> Result<(), AppError> {
                 Some(value) => min = value.parse()?,
                 None => return Err(AppError::MissingValue("--min".to_string())),
             },
+            "--format" => match args.next() {
+                Some(value) => format = value,
+                None => return Err(AppError::MissingValue("--format".to_string())),
+            },
             _ if arg.starts_with("-") => return Err(AppError::UnknownFlag(arg)),
             _ => filename = Some(arg),
         }
     }
+
+    let formatter = make_formatter(&format)
+        .ok_or_else(|| AppError::UnknownFlag(format!("--format {}", format)))?;
 
     let filename = match filename {
         Some(name) => name,
@@ -34,7 +44,7 @@ fn run() -> Result<(), AppError> {
         }
     };
 
-    let mut report = load_report(&filename)?;
+    let report = load_report(&filename)?;
 
     if words_count_only {
         let counts = report.word_counts();
@@ -49,15 +59,11 @@ fn run() -> Result<(), AppError> {
         return Ok(());
     }
 
-    report.add_title();
-
-    println!("{}", report.summary());
-
-    if !count_only {
-        println!("{}", report.content);
+    if count_only {
+        println!("{}", report.summary());
+    } else {
+        println!("{}", formatter.format_report(&report));
     }
-
-    println!("{}", report.line_stats());
 
     Ok(())
 }

@@ -268,3 +268,18 @@ When a variable has the same name as a struct field, `TypeName { field }` is sho
 
 **Type placeholder `_`（型別佔位符）**:
 An underscore in a type annotation tells the compiler "infer this part yourself." `Vec<_>` means "I want a Vec; figure out the element type from context." The compiler needs *some* type information from you (e.g. the container is `Vec`, not `HashSet`) but can fill in the rest from the iterator or return type. Common with `.collect()`, which can produce many different collection types. Not the same as `_` in a pattern (which means "ignore this value").
+
+**Trait object (`Box<dyn Trait>`)**:
+A value whose concrete type is unknown at compile time — only the trait it implements is known. Written `Box<dyn Formatter>`, meaning "a heap-allocated value that implements `Formatter`; I don't know (or care) which struct it is." The compiler attaches a **vtable** (a small table of function pointers) so method calls can be resolved at runtime. Use trait objects when the choice of implementation depends on runtime data (e.g. user input selecting a format). Contrast with [[泛型參數]] + [[Trait bound]], which resolve at compile time. See [[Static dispatch vs dynamic dispatch]], [[Lesson 35]].
+
+**`dyn`**:
+Short for "dynamic." Placed before a trait name to form a trait object type: `dyn Formatter`. It tells the compiler that method calls on this value go through a vtable lookup at runtime, rather than being resolved statically. `dyn Trait` alone is unsized — you can't put it on the stack directly; wrap it in `Box`, `&`, or `Arc`. See [[Trait object]].
+
+**`Box<T>`**:
+A smart pointer that allocates `T` on the heap and owns it. The `Box` itself is a fixed-size pointer living on the stack; when it goes out of scope, the heap memory is freed. Two main uses: (1) storing a [[Trait object]] (`Box<dyn Trait>`) because the concrete type's size is unknown at compile time, and (2) building recursive data structures whose size would otherwise be infinite.
+
+**Static dispatch vs dynamic dispatch（靜態派發 vs 動態派發）**:
+Two ways to call a trait method. *Static dispatch* (generics, `fn f<T: Trait>(x: T)`) — the compiler generates a separate copy of the function for each concrete type; calls are direct and can be inlined; decided at compile time. *Dynamic dispatch* (trait objects, `Box<dyn Trait>`) — a single copy of the code exists; calls go through a vtable pointer at runtime; slightly slower but supports choosing the implementation based on runtime data. Rule of thumb: if the type is known at compile time, use generics; if it depends on user input or config, use a trait object. See [[Lesson 35]].
+
+**`.ok_or_else(|| error)`**:
+Converts an `Option<T>` into a `Result<T, E>`. `Some(v)` becomes `Ok(v)`; `None` becomes `Err(error)`, where `error` is produced by the closure you provide. Useful when a function returns `Option` but you're inside a function that returns `Result` and want to use `?` to propagate the failure. The sibling `.ok_or(error)` evaluates the error eagerly; `.ok_or_else` takes a closure so the error is only constructed when actually needed. See [[`?` operator]].
