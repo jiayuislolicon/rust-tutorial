@@ -283,3 +283,9 @@ Two ways to call a trait method. *Static dispatch* (generics, `fn f<T: Trait>(x:
 
 **`.ok_or_else(|| error)`**:
 Converts an `Option<T>` into a `Result<T, E>`. `Some(v)` becomes `Ok(v)`; `None` becomes `Err(error)`, where `error` is produced by the closure you provide. Useful when a function returns `Option` but you're inside a function that returns `Result` and want to use `?` to propagate the failure. The sibling `.ok_or(error)` evaluates the error eagerly; `.ok_or_else` takes a closure so the error is only constructed when actually needed. See [[`?` operator]].
+
+**`impl Trait`（回傳位置）**:
+Written as `fn foo() -> impl Iterator<Item = i32>`. Means: "this function returns a concrete type that implements the trait, but I'm not naming it in the signature." The compiler still knows the exact type internally and performs static dispatch (no vtable, no heap). The concrete type is decided by the function body, not by the caller. Primary use case: returning iterator chains or closures whose types are anonymous and impossible to spell out. Limitation: the function must return exactly one concrete type — you cannot return different types from different branches. If you need that, use `Box<dyn Trait>` instead. See [[Lesson 36]], [[Static dispatch vs dynamic dispatch]].
+
+**`impl Trait`（參數位置）**:
+Written as `fn foo(val: impl Display)`. Syntactic sugar for a generic parameter: equivalent to `fn foo<T: Display>(val: T)`. Each call site can pass a different concrete type. Prefer this shorthand when the type parameter appears only once and you don't need to refer to it elsewhere in the signature. See [[Trait bound]], [[Lesson 36]].

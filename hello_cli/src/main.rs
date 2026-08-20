@@ -15,6 +15,7 @@ fn run() -> Result<(), AppError> {
     let mut min: usize = 1;
     let mut args = env::args().skip(1);
     let mut format = String::from("plain");
+    let mut grep: Option<String> = None;
 
     while let Some(arg) = args.next() {
         match arg.as_str() {
@@ -27,6 +28,10 @@ fn run() -> Result<(), AppError> {
             "--format" => match args.next() {
                 Some(value) => format = value,
                 None => return Err(AppError::MissingValue("--format".to_string())),
+            },
+            "--grep" => match args.next() {
+                Some(value) => grep = Some(value),
+                None => return Err(AppError::MissingValue("--grep".to_string())),
             },
             _ if arg.starts_with("-") => return Err(AppError::UnknownFlag(arg)),
             _ => filename = Some(arg),
@@ -45,6 +50,13 @@ fn run() -> Result<(), AppError> {
     };
 
     let report = load_report(&filename)?;
+
+    if let Some(pattern) = &grep {
+        for line in report.matching_lines(pattern) {
+            println!("{}", line);
+        }
+        return Ok(());
+    }
 
     if words_count_only {
         let counts = report.word_counts();

@@ -1,0 +1,523 @@
+<!doctype html>
+<html lang="zh-Hant">
+  <head>
+    <meta charset="UTF-8" />
+    <title>Lesson 36 · impl Trait — 把「具體型別」藏起來</title>
+    <link rel="stylesheet" href="../assets/style.css" />
+    <script src="../assets/quiz.js"></script>
+  </head>
+  <body>
+    <main>
+      <div class="kicker">Lesson 0036 · Rust · CLI 工具養成路線</div>
+      <h1>impl Trait — 把「具體型別」藏起來</h1>
+
+      <div class="byline">
+        <strong>學習目標：</strong>
+        這一課先不要急著背
+        <code>impl Iterator</code>。 真正要理解的是：Rust
+        有時候「知道函式回傳的具體型別」，只是那個型別實在太複雜、甚至包含匿名的
+        closure， 我們根本不想也無法在函式簽名上把它寫出來。
+        <code>impl Trait</code> 就是用來告訴 Rust：
+        <strong
+          >「我不寫出具體型別的名字，但這個值一定實作某個 trait。」</strong
+        >
+      </div>
+
+      <h2>1. 先回答：為什麼需要 <code>impl Trait</code>？</h2>
+
+      <p>先看一個我們已經很熟悉的函式：</p>
+
+      <pre><code>fn get_name() -&gt; String {
+    String::from("Alice")
+}</code></pre>
+
+      <p>
+        這裡完全沒有問題，因為我們知道回傳值就是 <code>String</code>， 而且
+        <code>String</code> 這個型別名稱很好寫。
+      </p>
+
+      <p>
+        但 Rust 的 iterator 很容易遇到另一種情況。
+        例如我們想要「找出所有包含關鍵字的行」：
+      </p>
+
+      <pre><code>self.content
+    .lines()
+    .filter(move |line| line.to_lowercase().contains(&amp;owned))</code></pre>
+
+      <p>
+        這個東西<strong>不是</strong> <code>Vec&lt;&amp;str&gt;</code>。
+        它是一個 iterator，而且 <code>filter()</code> 會產生一個新的 iterator。
+        更麻煩的是，<code>filter()</code> 裡面的 closure 也有 Rust
+        自己產生的匿名型別。
+      </p>
+
+      <p>所以它實際上會長得非常像：</p>
+
+      <pre><code>Filter&lt;
+    Lines&lt;'_&gt;,
+    某個 Rust 自動產生的 closure 型別
+&gt;</code></pre>
+
+      <strong>這裡才是問題</strong>，不是「Rust 不知道它是什麼」。
+      恰恰相反：<strong
+        >Rust 非常知道它是什麼，只是我們不需要知道那個完整名字。</strong
+      >
+
+      <h2>2. 這時候 <code>impl Trait</code> 做了什麼？</h2>
+
+      <p>我們可以把函式寫成：</p>
+
+      <pre><code>pub fn matching_lines(
+    &amp;self,
+    pattern: &amp;str
+) -&gt; impl Iterator&lt;Item = &amp;str&gt; {
+    let owned = pattern.to_lowercase();
+
+    self.content
+        .lines()
+        .filter(move |line| line.to_lowercase().contains(&amp;owned))
+}</code></pre>
+      <p>注意這裡有兩個很重要的觀念：</p>
+
+      <ol>
+        <li>
+          <strong>具體型別仍然存在</strong>，
+          <code>impl Trait</code> 並沒有把型別變成「不知道」。
+        </li>
+        <li>
+          <strong>只是把具體型別的名字藏起來</strong>，
+          編譯器仍然知道真正的型別，也可以用它進行靜態派發。
+        </li>
+      </ol>
+
+      <h2>3. 為什麼不直接寫 <code>Iterator</code>？</h2>
+
+      <p>可能會想：「既然我只在乎它是一個 Iterator，為什麼不直接寫？」</p>
+
+      <pre><code>// 這不是我們想要的寫法
+fn matching_lines(&amp;self, pattern: &amp;str) -&gt; Iterator&lt;Item = &amp;str&gt;</code></pre>
+
+      <p>
+        因為 <code>Iterator</code> 是
+        trait，不是一個可以直接拿來當一般回傳值的具體型別。 Rust
+        需要知道回傳值的實際型別大小與結構。
+      </p>
+
+      <p>
+        <code>impl Iterator</code> 的意思不是「回傳一個叫 Iterator 的東西」，
+        而是：
+      </p>
+
+      <pre><code>「回傳某一個型別」
+        ↓
+「這個型別實作 Iterator」
+        ↓
+「但我不想在 API 上寫出它的完整名字」</code></pre>
+
+      <h2>4. 那為什麼不用 <code>Box&lt;dyn Iterator&gt;</code>？</h2>
+
+      <p>
+        這正好可以和上一課的 <code>Box&lt;dyn Formatter&gt;</code> 接起來。
+        兩種寫法都可以把「具體型別」藏在 API 背後，但它們藏型別的方式不同。
+      </p>
+
+      <h3><code>impl Trait</code>：具體型別早就確定了</h3>
+
+      <pre><code>fn matching_lines(...) -&gt; impl Iterator&lt;Item = &amp;str&gt;</code></pre>
+
+      <p>
+        函式本身決定了回傳哪一個具體型別，使用者只是不用知道那個型別的名字，仍然是<strong>靜態派發</strong>。
+      </p>
+
+      <h3><code>dyn Trait</code>：允許透過 trait object 使用不同具體型別</h3>
+
+      <pre><code>fn make_formatter(...) -&gt; Box&lt;dyn Formatter&gt;</code></pre>
+
+      <p>
+        這種情況下，程式可以在執行時根據條件選擇不同的
+        <code>Formatter</code> 實作。 呼叫端只需要透過 trait object 使用它。
+      </p>
+
+      <p>
+        <strong>所以最重要的差別不是「有沒有把型別藏起來」。</strong>
+        兩者都能藏，真正的差別是：<strong
+          >你需不需要讓同一個 API 在執行時承載不同的具體型別。</strong
+        >
+      </p>
+
+      <table>
+        <thead>
+          <tr>
+            <th></th>
+            <th><code>impl Trait</code></th>
+            <th><code>dyn Trait</code></th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>具體型別</td>
+            <td>編譯期已確定，而且每次都對應同一種具體型別</td>
+            <td>可以透過 trait object 使用不同的具體型別</td>
+          </tr>
+          <tr>
+            <td>派發</td>
+            <td>靜態派發</td>
+            <td>動態派發</td>
+          </tr>
+          <tr>
+            <td>主要用途</td>
+            <td>型別很複雜、匿名，但不需要動態選擇</td>
+            <td>需要在執行時處理不同實作</td>
+          </tr>
+          <tr>
+            <td>Box</td>
+            <td>不需要因為 <code>impl Trait</code> 本身而使用 Box</td>
+            <td>
+              常見寫法是 <code>Box&lt;dyn Trait&gt;</code>，但
+              <code>dyn Trait</code> 本身不等於 heap
+            </td>
+          </tr>
+        </tbody>
+      </table>
+
+      <ul>
+        <li><code>impl Trait</code> 是「我知道是哪一型，只是不想寫名字」。</li>
+        <li>
+          <code>dyn Trait</code> 是「我只需要透過這個 trait
+          使用它，而且可以容納不同的具體實作」。
+        </li>
+      </ul>
+
+      <h2>5. 回到我們的 <code>--grep</code></h2>
+
+      <p>
+        現在就可以理解為什麼 <code>matching_lines()</code> 很適合使用
+        <code>impl Iterator</code>。
+      </p>
+
+      <pre><code>pub fn matching_lines(
+    &amp;self,
+    pattern: &amp;str
+) -&gt; impl Iterator&lt;Item = &amp;str&gt; {
+    let owned = pattern.to_lowercase();
+
+    self.content
+        .lines()
+        .filter(move |line| line.to_lowercase().contains(&amp;owned))
+}</code></pre>
+
+      <p>不管使用者輸入的是：</p>
+
+      <pre><code>--grep "fn"
+--grep "error"
+--grep "hello"</code></pre>
+
+      <p>
+        <code>matching_lines()</code> 裡面的 iterator chain 都是同一種結構。
+        使用者輸入的字串會改變「哪些行符合」，但<strong>不會改變回傳值的具體型別</strong>。
+      </p>
+
+      <p>
+        因此這裡完全沒有必要使用 <code>dyn Iterator</code>。
+        我們只是懶得、也無法寫出那個 iterator chain 的完整型別名稱。
+      </p>
+
+      <h2>6. <code>impl Iterator</code> 還有另一個好處：保留惰性</h2>
+
+      <p>
+        iterator 本身是惰性的，<code>matching_lines()</code> 回傳的是一個
+        Iterator，不代表它已經把所有符合 "fn" 的行找出來了：
+      </p>
+
+      <pre><code>let lines = report.matching_lines("fn");</code></pre>
+
+      <p>真正要求下一個元素時，iterator 才會逐步往前走：</p>
+
+      <pre><code>for line in lines {
+    println!("{}", line);
+}</code></pre>
+
+      <p>
+        因此我們不需要為了「讓回傳型別比較好寫」而把結果先收集成
+        <code>Vec</code>：
+      </p>
+
+      <pre><code>// 可以，但會立刻收集所有結果
+fn matching_lines(...) -&gt; Vec&lt;&amp;str&gt;</code></pre>
+
+      <p>
+        <code>impl Iterator</code> 讓我們可以直接把 iterator chain 傳出去，
+        由呼叫端決定什麼時候把結果算好。
+      </p>
+
+      <h2>7. 使用 <code>matching_lines()</code></h2>
+
+      <p>參數解析先加入 <code>--grep</code>：</p>
+
+      <pre><code>"--grep" =&gt; match args.next() {
+    Some(value) =&gt; grep = Some(value),
+    None =&gt; return Err(AppError::MissingValue("--grep".to_string())),
+},</code></pre>
+
+      <p>接著在 <code>main</code> 裡：</p>
+
+      <pre><code>if let Some(ref pattern) = grep {
+    for line in report.matching_lines(pattern) {
+        println!("{}", line);
+    }
+
+    return Ok(());
+}</code></pre>
+
+      <ol>
+        <li>matching_lines() 回傳一個可以逐行取資料的 Iterator</li>
+        <li>for 迴圈逐個取得</li>
+        <li>println!</li>
+      </ol>
+
+      <h2>8. <code>impl Trait</code> 不代表「可以回傳任何實作」</h2>
+
+      <p>這是這一課最容易搞錯的地方。</p>
+
+      <p>看到：</p>
+
+      <pre><code>fn foo() -&gt; impl Display</code></pre>
+
+      <p>不要把它理解成：</p>
+
+      <pre><code>「foo 可以隨便回傳任何有實作 Display 的型別。」</code></pre>
+
+      <p>
+        更準確的理解是：「foo 會回傳某一個固定的具體型別， 而這個型別實作
+        Display。 我不需要知道它的名字。」
+      </p>
+
+      <p>所以這樣不能編譯：</p>
+
+      <pre><code>fn pick(flag: bool) -&gt; impl std::fmt::Display {
+    if flag {
+        "hello"    // &amp;str
+    } else {
+        42         // i32
+    }
+}</code></pre>
+
+      <p>
+        因為兩個分支是不同的具體型別：
+        <code>&amp;str</code> 與 <code>i32</code>。 即使它們都實作
+        <code>Display</code>，
+        <code>impl Trait</code> 仍然要求函式的回傳型別能被視為同一個具體型別。
+      </p>
+
+      <h2>9. 那什麼時候才需要 <code>dyn Trait</code>？</h2>
+
+      <p>如果你的需求真的是：</p>
+
+      <pre><code>if 某個條件 {
+    使用 FormatterA
+} else {
+    使用 FormatterB
+}</code></pre>
+
+      <p>
+        而且這兩個 formatter 是不同的具體型別，
+        那麼你就需要一種方式讓它們透過共同的 trait 介面被使用。 這就是上一課
+        <code>Box&lt;dyn Formatter&gt;</code> 的用途。
+      </p>
+
+      <p>所以可以用一個很實用的判斷方式：</p>
+
+      <ol>
+        <li>
+          <strong>只是型別太醜、太長、包含 closure / iterator chain？</strong>
+          → <code>impl Trait</code>
+        </li>
+        <li>
+          <strong>真的需要在執行時選擇不同的實作？</strong>
+          → 考慮 <code>dyn Trait</code>
+        </li>
+        <li>
+          <strong>我根本知道具體型別，而且型別名稱很好寫？</strong>
+          → 直接寫具體型別
+        </li>
+      </ol>
+
+      <h2>10. 參數位置的 <code>impl Trait</code></h2>
+
+      <p>
+        <code>impl Trait</code> 不只可以出現在回傳位置，也可以寫在函式參數：
+      </p>
+
+      <pre><code>fn print_all(items: impl Iterator&lt;Item = String&gt;) {
+    for item in items {
+        println!("{}", item);
+    }
+}</code></pre>
+
+      <p>
+        這裡的意思是： 「呼叫者可以傳入任何實作
+        <code>Iterator&lt;Item = String&gt;</code>
+        的型別。」
+      </p>
+
+      <p>它和泛型的概念很接近。例如：</p>
+
+      <pre><code>fn print_all&lt;I&gt;(items: I)
+where
+    I: Iterator&lt;Item = String&gt;,
+{
+    for item in items {
+        println!("{}", item);
+    }
+}</code></pre>
+
+      <p>
+        這一部分先記住「參數位置的
+        <code>impl Trait</code> 是一種比較精簡的泛型寫法」即可。
+        當你需要在多個地方精確引用同一個型別參數時，再使用完整的泛型語法會比較清楚。
+      </p>
+
+      <h2>11. 這一課真正要記住什麼？</h2>
+
+      <strong><code>impl Trait</code> 的核心不是「Iterator」。</strong
+      ><br /><br />
+      Iterator 只是非常常見的使用情境，因為 iterator chain
+      的具體型別通常又長又包含匿名 closure。
+      <br /><br />
+      真正的概念是：
+      <br />
+      <strong
+        >「具體型別已經確定，只是我不想／不能在 API 上寫出它的名字。」</strong
+      >
+
+      <p>因此看到：</p>
+
+      <pre><code>-&gt; impl Iterator&lt;Item = &amp;str&gt;</code></pre>
+
+      <p>
+        腦中可以直接翻譯成：「回傳某個固定的 Iterator。 Rust 知道它真正是誰。
+        我只需要知道它可以當 Iterator 使用。
+      </p>
+
+      <p>這樣再回頭看上一課與這一課，就會形成一個很清楚的對比：</p>
+
+      <pre><code>impl Trait
+    ↓
+「型別固定，只是不想寫名字」
+    ↓
+靜態派發
+
+dyn Trait
+    ↓
+「透過共同介面使用不同具體型別」
+    ↓
+動態派發</code></pre>
+
+      <h2>12. 檢查你記得多少</h2>
+
+      <div class="quiz" data-mcq data-answer="3">
+        <div class="q">
+          <code>fn foo() -&gt; impl Iterator&lt;Item = i32&gt;</code>
+          最接近哪個意思？
+        </div>
+        <div class="choices">
+          <button>回傳值會放到 heap 上，再透過 vtable 呼叫</button>
+          <button>呼叫端可以決定 foo 要回傳哪一種 Iterator</button>
+          <button>
+            foo 會回傳某一個固定的具體型別；那個型別實作 Iterator，
+            但簽名不需要寫出具體型別名稱
+          </button>
+          <button>Iterator 會在執行時才被轉型出來</button>
+        </div>
+        <div
+          class="feedback"
+          data-ok="答對了。impl Trait 的重點是隱藏具體型別名稱，而不是在執行時選擇型別。"
+          data-bad="再想一下：impl Trait 不等於 dyn Trait。它不是把型別變成執行時才決定，而是把一個編譯期已知的具體型別藏起來。"
+        ></div>
+      </div>
+
+      <div class="quiz" data-mcq data-answer="2">
+        <div class="q">
+          為什麼這段程式碼不能編譯？
+          <pre><code>fn pick(flag: bool) -&gt; impl std::fmt::Display {
+    if flag { "hello" } else { 42 }
+}</code></pre>
+        </div>
+        <div class="choices">
+          <button>因為 &amp;str 和 i32 都沒有實作 Display</button>
+          <button>
+            因為 impl Trait 的回傳型別必須對應同一個具體型別， 但兩個分支分別是
+            &amp;str 和 i32
+          </button>
+          <button>因為 if/else 不能回傳值</button>
+          <button>因為 impl Trait 不能放在回傳位置</button>
+        </div>
+        <div
+          class="feedback"
+          data-ok="答對了。即使 &amp;str 和 i32 都實作 Display，它們仍然是兩種不同的具體型別。"
+          data-bad="關鍵不是它們有沒有實作 Display，而是 impl Trait 的回傳位置仍然代表一個固定的具體型別。"
+        ></div>
+      </div>
+
+      <div class="quiz" data-mcq data-answer="1">
+        <div class="q">
+          <code>matching_lines()</code> 的 iterator chain 很長，而且裡面有
+          closure。 這時候最適合的回傳方式是？
+        </div>
+        <div class="choices">
+          <button>
+            <code>impl Iterator&lt;Item = ...&gt;</code>，
+            因為具體型別在編譯期已經確定，只是名稱很難寫
+          </button>
+          <button>
+            <code>Box&lt;dyn Iterator&lt;Item = ...&gt;&gt;</code>， 因為
+            iterator chain 天生只能放在 heap
+          </button>
+          <button>一定要先 <code>collect()</code> 成 Vec</button>
+          <button>只能使用動態派發</button>
+        </div>
+        <div
+          class="feedback"
+          data-ok="答對了。iterator chain 正是 impl Trait 很典型的使用情境：型別已經固定，只是完整名稱很不方便寫。"
+          data-bad="iterator chain 的型別不是執行時才知道。它在編譯期就確定了，因此不需要因為『型別很長』就改成 dyn。"
+        ></div>
+      </div>
+
+      <div class="win">
+        <div class="kicker">這一課的成果</div>
+        你現在不需要把 <code>impl Trait</code> 背成一個「Iterator 專用語法」。
+        <br /><br />
+        看到它時，先翻譯成：
+        <strong>「某個具體型別已經確定，只是把它的名字藏起來。」</strong>
+        <br /><br />
+        iterator chain 是最常見的例子，因為 closure 會讓具體型別非常難以手寫。
+        而上一課的 <code>dyn Trait</code> 則是在另一種情況下出場：
+        <strong>你需要透過共同 trait 介面處理不同的具體實作。</strong>
+      </div>
+
+      <p class="source">
+        主要參考資料：
+        <a
+          href="https://doc.rust-lang.org/book/ch10-02-traits.html#returning-types-that-implement-traits"
+          target="_blank"
+          >The Rust Programming Language — Returning Types that Implement
+          Traits</a
+        >. 本課範例以 <code>hello_cli/</code> 的 iterator chain 與上一課的
+        <code>Box&lt;dyn Formatter&gt;</code> 為脈絡。
+      </p>
+
+      <nav class="lesson-links">
+        <a href="0035-trait-objects.html">
+          &larr; 上一課：Trait Object — 在執行時才決定呼叫誰
+        </a>
+        <a href="#">下一課：TBD &rarr;</a>
+      </nav>
+
+      <p class="ask-agent">
+        卡住了、或有任何看不懂的地方，直接問我（你的 AI 教學助手）就好 ——
+        隨時可以打斷這個流程提問。
+      </p>
+    </main>
+  </body>
+</html>

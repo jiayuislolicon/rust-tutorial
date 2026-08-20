@@ -78,6 +78,13 @@ impl Report {
             .collect()
     }
 
+    pub fn matching_lines(&self, pattern: &str) -> impl Iterator<Item = &str> {
+        let owned = pattern.to_lowercase();
+        self.content
+            .lines()
+            .filter(move |line| line.to_lowercase().contains(&owned))
+    }
+
     pub fn word_counts(&self) -> BTreeMap<&str, usize> {
         let mut counts = BTreeMap::new();
 
@@ -171,5 +178,25 @@ mod tests {
             report.line_count(),
             line_stats.empty + line_stats.comment + line_stats.code
         );
+    }
+
+    #[test]
+    fn matching_lines_case_insensitive() {
+        let report = Report::new(
+            "test.rs",
+            "fn main() {\n    println!(\"Hello\");\n}\n".to_string(),
+        );
+        let matches: Vec<_> = report.matching_lines("MAIN").collect();
+        assert_eq!(matches, vec!["fn main() {"]);
+    }
+
+    #[test]
+    fn matching_lines_returns_all_hits() {
+        let report = Report::new(
+            "test.rs",
+            "let x = 1;\nlet y = 2;\nconst Z = 3;\n".to_string(),
+        );
+        let matches: Vec<_> = report.matching_lines("let").collect();
+        assert_eq!(matches, vec!["let x = 1;", "let y = 2;"]);
     }
 }

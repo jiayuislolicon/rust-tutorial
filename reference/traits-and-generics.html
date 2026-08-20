@@ -85,6 +85,56 @@ largest(&amp;vec!["rust", "cargo", "compiler"]); // -&gt; "rust"</code></pre>
         先去找函式簽名上的 trait bound —— 十之八九是你的型別沒有滿足它。
       </p>
 
+      <h2><code>impl Trait</code>：隱藏具體型別名的靜態派發</h2>
+
+      <pre><code>fn matching_lines(&amp;self, pattern: &amp;str) -> impl Iterator&lt;Item = &amp;str&gt; {
+    self.content.lines().filter(move |line| line.contains(pattern))
+}</code></pre>
+
+      <p>
+        <code>impl Trait</code> 在回傳位置代表：「這個函式回傳的東西實作了某 trait，但我不在簽名上寫出具體型別。」
+        編譯器仍然知道具體型別，做的是靜態派發（零成本）。
+      </p>
+
+      <p>在參數位置則是泛型的語法糖：</p>
+
+      <pre><code>fn print_it(val: impl Display) { ... }
+// 等價於
+fn print_it&lt;T: Display&gt;(val: T) { ... }</code></pre>
+
+      <h2><code>impl Trait</code> vs <code>dyn Trait</code> vs 泛型</h2>
+
+      <table>
+        <thead>
+          <tr><th>寫法</th><th>型別何時確定</th><th>派發</th><th>適用場景</th></tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><code>&lt;T: Trait&gt;</code></td>
+            <td>編譯期（呼叫端指定）</td>
+            <td>靜態</td>
+            <td>一份函式服務多種型別，且呼叫時型別已知</td>
+          </tr>
+          <tr>
+            <td><code>impl Trait</code>（回傳位置）</td>
+            <td>編譯期（函式內部決定）</td>
+            <td>靜態</td>
+            <td>回傳 iterator chain / closure 等寫不出名字的型別</td>
+          </tr>
+          <tr>
+            <td><code>Box&lt;dyn Trait&gt;</code></td>
+            <td>執行時</td>
+            <td>動態（vtable）</td>
+            <td>同一位置需要存放/回傳不同具體型別（依使用者輸入等）</td>
+          </tr>
+        </tbody>
+      </table>
+
+      <p>
+        經驗法則：寫不出名字 → <code>impl Trait</code>；執行時才選 → <code>dyn Trait</code>；
+        能寫出名字且呼叫端也需要知道 → 明確的泛型。
+      </p>
+
       <p class="source">
         來源：<a href="https://doc.rust-lang.org/book/ch10-01-syntax.html" target="_blank"
           >TRPL Chapter 10.1: Generic Data Types</a
@@ -93,6 +143,3 @@ largest(&amp;vec!["rust", "cargo", "compiler"]); // -&gt; "rust"</code></pre>
         >（繁中版：<a href="https://rust-lang.tw/book-tw/ch10-02-traits.html" target="_blank">rust-lang.tw</a>）。相關參考卡：<a
           href="structs-and-custom-types.html">structs 速查</a>、<a href="std-types.html">標準庫型別地圖</a>。
       </p>
-    </main>
-  </body>
-</html>
