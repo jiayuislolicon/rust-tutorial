@@ -307,3 +307,21 @@ A website that automatically builds and hosts API documentation for every crate 
 
 **clap**:
 The most widely used command-line argument parsing crate in the Rust ecosystem. With the `derive` feature enabled, you define a struct with `#[derive(Parser)]` and annotate fields with `#[arg(...)]` — clap generates the parser, `--help` output, and error messages automatically. Field types map directly to parsing behaviour: `bool` → flag, `Option<T>` → optional, `T` with `default_value` → has a default. See [[Lesson 37]].
+
+**Serialization（序列化）**:
+Turning a Rust value into a text (or binary) representation — e.g. a struct into a JSON string. The reverse is **deserialization**（反序列化）: text back into a typed Rust value. In TypeScript the closest everyday pair is `JSON.stringify` / `JSON.parse`.
+
+**Serde**:
+The standard serialization framework in the Rust ecosystem. It defines the `Serialize` and `Deserialize` traits and provides `#[derive(Serialize)]` / `#[derive(Deserialize)]` (via the `derive` feature). Serde itself is format-agnostic; each text format (JSON, TOML, YAML, …) is handled by a separate crate such as `serde_json`. See [[Lesson 38]].
+
+**`Serialize` / `Deserialize`**:
+Traits from Serde. `Serialize` means "this value can be written out as some format"; `Deserialize` means "this type can be built from some format." Derive them when every field is itself serializable/deserializable. See [[Serde]], [[`#[derive(...)]`]].
+
+**`serde_json`**:
+The crate that turns Serde's `Serialize`/`Deserialize` into JSON text (and back). `serde_json::to_string` / `to_string_pretty` turn a `Serialize` value into a `Result<String, _>`; `serde_json::from_str` builds a `Deserialize` type (or a dynamic [[`serde_json::Value`]]) from text. See [[Lesson 38]].
+
+**`serde_json::Value`**:
+A dynamically typed JSON value (`Null`, `Bool`, `Number`, `String`, `Array`, `Object`). Useful in tests or when the shape isn't fixed at compile time — index with `value["key"]`. Closest TypeScript analogue: the result of `JSON.parse` before you narrow it to an interface.
+
+**View struct（輸出用結構）**:
+A small struct that holds only the fields you want to serialize, separate from your internal data model. Used when `#[derive(Serialize)]` on the real type would include fields you don't want in the output (e.g. `Report.content`). See [[Lesson 38]].

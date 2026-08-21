@@ -1,0 +1,407 @@
+<!doctype html>
+<html lang="zh-Hant">
+  <head>
+    <meta charset="UTF-8" />
+    <title>Lesson 38 · Serde — 結構化序列化</title>
+    <link rel="stylesheet" href="../assets/style.css" />
+    <script src="../assets/quiz.js"></script>
+  </head>
+  <body>
+    <main>
+      <div class="kicker">Lesson 0038 · Rust · CLI 工具養成路線</div>
+      <h1>Serde — 結構化序列化</h1>
+
+      <div class="byline">
+        <strong>學習目標：</strong>
+        你的 <code>JsonFormatter</code> 用 <code>format!</code> 手拼 JSON
+        字串——一般檔名下能動，但檔名裡只要多一個雙引號就會產出非法
+        JSON。這一課你會換成 Rust 生態系的標準做法：用
+        <code>serde</code> 描述「要輸出哪些欄位」，再交給
+        <code>serde_json</code> 產生合法、可解析的 JSON。
+      </div>
+
+      <h2>1. 手拼字串會在哪裡翻車</h2>
+
+      <p>
+        先來看現在的寫法。打開 <code>formatter.rs</code> 裡的
+        <code>JsonFormatter</code>：
+      </p>
+
+      <pre><code>format!(
+    "{{
+  \"filename\": \"{}\",
+  \"lines\": {},
+  \"empty\": {},
+  \"comment\": {},
+  \"code\": {}
+}}",
+    report.filename,
+    report.line_count(),
+    stats.empty,
+    stats.comment,
+    stats.code,
+)</code></pre>
+
+      <p>
+        對大多數正常檔名，這段程式碼看起來沒問題。但試想檔名裡剛好有一個雙引號——例如
+        <code>say"hi".rs</code>——拼出來的字串會長這樣：
+      </p>
+
+      <pre><code>{
+  "filename": "say"hi".rs",
+  ...
+}</code></pre>
+
+      <p>
+        這不是合法的 JSON。下游若用
+        <code>JSON.parse</code> 或任何正式 parser
+        讀它，都會直接失敗。而且這只是其中一種翻車方式：逗號漏寫、括號少一個、欄位值含換行——手拼字串時，同一類問題會一再出現。
+      </p>
+
+      <p>
+        你真正需要的不是「長得很像 JSON 的字串」，而是「從一個 Rust
+        值，可靠地變成某種文字格式」。這件事有專門的名字：<strong>序列化</strong>（serialization）。
+      </p>
+
+      <h2>2. 序列化：TypeScript 裡你已經做過</h2>
+
+      <p>在 TypeScript 裡，你幾乎不會手拼 JSON：</p>
+
+      <pre><code>JSON.stringify({
+  filename: report.filename,
+  lines: report.lineCount(),
+  empty: stats.empty,
+  comment: stats.comment,
+  code: stats.code,
+});</code></pre>
+
+      <p>你把一個物件交出去；跳脫字元、逗號、括號怎麼放，全由函式庫處理。</p>
+
+      <p>
+        Rust 裡對應的標準答案是
+        <strong>Serde</strong>——一個專門做序列化與反序列化的框架。Serde
+        本身不綁定某一種格式；JSON、TOML、YAML 各自有一個負責該格式的
+        crate。這一課用的是處理 JSON 的 crate：<code>serde_json</code>。
+      </p>
+
+      <table>
+        <thead>
+          <tr>
+            <th>角色</th>
+            <th>crate</th>
+            <th>做什麼</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>框架</td>
+            <td><code>serde</code></td>
+            <td>
+              定義 <code>Serialize</code>／<code>Deserialize</code> trait；提供
+              <code>#[derive(Serialize)]</code>
+            </td>
+          </tr>
+          <tr>
+            <td>JSON 格式</td>
+            <td><code>serde_json</code></td>
+            <td>
+              把實作了 <code>Serialize</code> 的值變成 JSON 字串（或反過來）
+            </td>
+          </tr>
+        </tbody>
+      </table>
+
+      <div class="callout">
+        💡 <strong>Serialize 與 Deserialize。</strong>Serialize 是「Rust 值 →
+        文字」；Deserialize 是「文字 → Rust 值」。這一課只需要
+        Serialize——你的工具是在 <em>輸出</em> JSON。讀設定檔、解析 API
+        回應時才會用到 Deserialize；概念相同，只是方向相反。
+      </div>
+
+      <h2>3. 加入兩個依賴</h2>
+
+      <p>在 <code>hello_cli/</code> 目錄執行：</p>
+
+      <pre><code>cargo add serde --features derive
+cargo add serde_json</code></pre>
+
+      <p>
+        和上一課的 <code>clap</code> 一樣，<code>derive</code> feature
+        開啟之後才能寫 <code>#[derive(Serialize)]</code>。<code
+          >serde_json</code
+        >
+        不需要額外 feature。
+      </p>
+
+      <p>完成後 <code>Cargo.toml</code> 會多兩行：</p>
+
+      <pre><code>[dependencies]
+clap = { version = "4", features = ["derive"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"</code></pre>
+
+      <h2>4. 專用的 view struct，不要直接 Serialize Report</h2>
+
+      <p>
+        直覺上，你可能想在 <code>Report</code> 上加
+        <code>#[derive(Serialize)]</code>。但 <code>Report</code> 裡有
+        <code>content</code>——整份檔案內容——直接序列化會把全文也塞進
+        JSON。你現在的輸出只要摘要欄位，不需要那些。
+      </p>
+
+      <p>
+        正確做法是另建一個 struct，只裝「要輸出的欄位」。這種 struct 有時叫 view
+        struct——它描述的是輸出長什麼樣，而不是內部資料模型長什麼樣。在
+        <code>formatter.rs</code> 頂部加上 import，並定義：
+      </p>
+
+      <pre><code>use serde::Serialize;
+
+#[derive(Serialize)]
+struct ReportJson&lt;'a&gt; {
+    filename: &amp;'a str,
+    lines: usize,
+    empty: usize,
+    comment: usize,
+    code: usize,
+}</code></pre>
+
+      <p>struct 定義完之後，有三個細節值得對一下：</p>
+
+      <ul>
+        <li>
+          <code>#[derive(Serialize)]</code> 和
+          <code>#[derive(Debug)]</code>、<code>#[derive(Parser)]</code>
+          一樣——編譯器看著欄位，自動產生
+          <code>impl Serialize</code>。
+        </li>
+        <li>
+          欄位名就是 JSON 的 key。想改名字可以用
+          <code>#[serde(rename = "...")]</code>；這一課用不到。
+        </li>
+        <li>
+          <code>filename: &amp;'a str</code>
+          借用現有的 <code>report.filename</code>，不必再
+          <code>.clone()</code>。lifetime <code>'a</code>
+          你在 Lesson 34 見過——這裡的意思很單純：這個 struct
+          不能活得比它借用的字串還久。
+        </li>
+      </ul>
+
+      <p>然後改寫 <code>JsonFormatter</code>：</p>
+
+      <pre><code>impl Formatter for JsonFormatter {
+    fn format_report(&amp;self, report: &amp;Report) -&gt; String {
+        let stats = report.line_stats();
+        let json = ReportJson {
+            filename: &amp;report.filename,
+            lines: report.line_count(),
+            empty: stats.empty,
+            comment: stats.comment,
+            code: stats.code,
+        };
+        serde_json::to_string_pretty(&amp;json)
+            .expect("ReportJson should always serialize")
+    }
+}</code></pre>
+
+      <p>
+        <code>to_string_pretty</code> 回傳的是
+        <code>Result&lt;String, _&gt;</code>，不是直接的
+        <code>String</code>。對只含 <code>&amp;str</code> 和數字的
+        <code>ReportJson</code>
+        來說，序列化實際上不會失敗；這裡用
+        <code>expect</code> 是在說「若真的失敗，代表程式邏輯有 bug」。函式名裡的
+        <code>_pretty</code> 表示縮排漂亮的輸出；若不要換行，用
+        <code>to_string</code> 就好。
+      </p>
+
+      <h2>5. 比較前後，並讓測試真的解析 JSON</h2>
+
+      <p>
+        前面說過，手拼字串只能保證「看起來像」JSON。換成 Serde
+        之後，你可以直接比較前後差異：
+      </p>
+
+      <div class="compare compare-before">
+        <div class="kicker">🔴 手拼字串——看起來像 JSON</div>
+        <pre><code>format!(
+    "{{\n  \"filename\": \"{}\",\n  \"lines\": {},\n  ...
+}}",
+    report.filename,
+    report.line_count(),
+    ...
+)</code></pre>
+      </div>
+
+      <div class="compare compare-after">
+        <div class="kicker">🟢 Serde——從 struct 產生合法 JSON</div>
+        <pre><code>#[derive(Serialize)]
+struct ReportJson&lt;'a&gt; { filename: &amp;'a str, lines: usize, ... }
+
+serde_json::to_string_pretty(&amp;json).expect("...")</code></pre>
+      </div>
+
+      <p>
+        換完之後，測試也能跟著升級。以前你只能寫
+        <code>output.contains("\"lines\": 3")</code>，猜字串「看起來像不像」對的
+        JSON；現在可以直接 parse，確認它真的是合法 JSON：
+      </p>
+
+      <pre><code>#[test]
+fn json_formatter_produces_valid_structure() {
+    let report = Report::new("test.rs", "let x = 1;\n// hi\n\n".to_string());
+    let output = JsonFormatter.format_report(&amp;report);
+    let value: serde_json::Value =
+        serde_json::from_str(&amp;output).expect("output should be valid JSON");
+    assert_eq!(value["filename"], "test.rs");
+    assert_eq!(value["lines"], 3);
+    assert_eq!(value["empty"], 1);
+    assert_eq!(value["comment"], 1);
+    assert_eq!(value["code"], 1);
+}</code></pre>
+
+      <p>
+        <code>serde_json::Value</code> 代表「任意 JSON 值」——類似 TypeScript 裡
+        <code>JSON.parse</code> 之後、還沒對到具體 interface 的結果。用
+        <code>value["key"]</code>
+        取值，測試就能確認：輸出不只是長得像 JSON，而是真的可以被 parse。
+      </p>
+
+      <h2>6. 動手做</h2>
+
+      <ol>
+        <li>
+          執行 <code>cargo add serde --features derive</code> 與
+          <code>cargo add serde_json</code>。
+        </li>
+        <li>
+          在 <code>formatter.rs</code> 定義 <code>ReportJson</code>，加上
+          <code>#[derive(Serialize)]</code>。
+        </li>
+        <li>
+          把 <code>JsonFormatter::format_report</code> 改成組裝
+          <code>ReportJson</code>，再呼叫
+          <code>serde_json::to_string_pretty</code>。
+        </li>
+        <li>
+          把 JSON 測試改成用
+          <code>serde_json::from_str</code> 解析後再 <code>assert_eq!</code>。
+        </li>
+        <li>
+          跑 <code>cargo test</code>，再跑
+          <code>cargo run -- --format json src/main.rs</code>
+          看輸出。
+        </li>
+      </ol>
+
+      <div class="callout tip">
+        💡 <code>PlainFormatter</code>、<code>make_formatter</code> 和
+        <code>main.rs</code> 都不需要改。trait object 那一層仍然成立——你換的只是
+        JSON 那條實作路徑內部怎麼產生字串。
+      </div>
+
+      <h2>7. 檢查你記得多少</h2>
+
+      <div class="quiz" data-mcq data-answer="2">
+        <div class="q">
+          <code>serde</code> 和 <code>serde_json</code> 分別負責什麼？
+        </div>
+        <div class="choices">
+          <button>serde 產生 JSON 字串；serde_json 提供 Serialize trait</button>
+          <button>
+            serde 定義序列化框架與 derive；serde_json 負責把值變成（或讀回）JSON
+          </button>
+          <button>兩者功能相同，選一個用即可</button>
+          <button>serde 只能用在 CLI；serde_json 只能用在 web</button>
+        </div>
+        <div
+          class="feedback"
+          data-ok="答對了。serde 是框架（trait 與 derive）；serde_json、toml 這類 crate 各自負責一種具體文字格式。"
+          data-bad="再看一次第 2 節的表格。哪個 crate 定義 trait、提供 derive？哪個 crate 負責把值變成 JSON 字串？"
+        ></div>
+      </div>
+
+      <div class="quiz" data-mcq data-answer="1">
+        <div class="q">
+          為什麼這一課用 <code>ReportJson</code>，而不是直接在
+          <code>Report</code> 上 <code>#[derive(Serialize)]</code>？
+        </div>
+        <div class="choices">
+          <button>Report 含有 content，直接序列化會把整份檔案塞進 JSON</button>
+          <button>Report 不能加任何 derive</button>
+          <button>serde 不支援對有方法的 struct 做 derive</button>
+          <button>ReportJson 比較短，編譯比較快</button>
+        </div>
+        <div
+          class="feedback"
+          data-ok="答對了。view struct 只放要輸出的欄位，避免把 content 整份檔案內容倒進 JSON。"
+          data-bad="再想一下 Report 有哪些欄位。若直接在 Report 上 derive Serialize，輸出會多出什麼你現在不需要的東西？"
+        ></div>
+      </div>
+
+      <div class="quiz" data-mcq data-answer="4">
+        <div class="q">
+          <code>serde_json::to_string_pretty(&amp;json)</code> 的回傳型別是？
+        </div>
+        <div class="choices">
+          <button><code>String</code></button>
+          <button><code>Option&lt;String&gt;</code></button>
+          <button><code>&amp;str</code></button>
+          <button><code>Result&lt;String, _&gt;</code></button>
+        </div>
+        <div
+          class="feedback"
+          data-ok="答對了。回傳型別是 Result，所以程式碼才需要 expect（或 ?）。對簡單的 ReportJson，失敗幾乎只代表邏輯錯誤。"
+          data-bad="再看一次第 4 節改寫後的那一行。to_string_pretty 回傳的是 String 還是 Result？為什麼後面要接 expect？"
+        ></div>
+      </div>
+
+      <div class="win">
+        <div class="kicker">這一課的成果</div>
+        你不再手拼 JSON 字串，而是先描述結構、再交給函式庫輸出。
+        <br /><br />
+        三件帶走的事：
+        <ul>
+          <li>
+            <code>Serialize</code>——用 derive 宣告「這個 struct
+            可以變成某種格式」
+          </li>
+          <li>
+            <code>serde_json::to_string_pretty</code>——把值變成合法、可讀的 JSON
+          </li>
+          <li>
+            view struct——輸出形狀和內部資料模型可以分開，不必把整份
+            <code>Report</code> 都倒出去
+          </li>
+        </ul>
+        <br />
+        下一課會回到錯誤處理：用 <code>From</code>／<code>Into</code> 與
+        <code>thiserror</code> 把 <code>AppError</code> 收尾。 <br /><br />
+        速查表：<a href="../reference/serde.html">Serde 速查</a>。
+      </div>
+
+      <p class="source">
+        主要參考資料：
+        <a href="https://serde.rs/" target="_blank">serde.rs</a>、
+        <a href="https://docs.rs/serde_json" target="_blank"
+          >serde_json（docs.rs）</a
+        >。
+      </p>
+
+      <nav class="lesson-links">
+        <a href="0037-external-crates.html">
+          &larr; 上一課：外部 Crate —— 你的第一個 Cargo 依賴
+        </a>
+        <a href="0039-from-into-thiserror.html"
+          >下一課：From / Into 與 thiserror &rarr;</a
+        >
+      </nav>
+
+      <p class="ask-agent">
+        卡住了、或有任何看不懂的地方，直接問我（你的 AI 教學助手）就好 ——
+        隨時可以打斷這個流程提問。
+      </p>
+    </main>
+  </body>
+</html>

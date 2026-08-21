@@ -1,0 +1,76 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="UTF-8">
+<title>Reference · Serde</title>
+<link rel="stylesheet" href="../assets/style.css">
+</head>
+<body>
+<main>
+<div class="kicker">Reference · 速查表</div>
+<h1>Serde</h1>
+
+<p>
+  來自 <a href="../lessons/0038-serde.html">Lesson 38</a>。
+  <strong>Serde 是序列化框架；serde_json 是負責 JSON 這種格式的 crate。</strong>
+</p>
+
+<h2>加入依賴</h2>
+<pre><code>cargo add serde --features derive
+cargo add serde_json</code></pre>
+
+<pre><code>[dependencies]
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"</code></pre>
+
+<h2>Serialize：Rust 值 → 文字</h2>
+<pre><code>use serde::Serialize;
+
+#[derive(Serialize)]
+struct ReportJson&lt;'a&gt; {
+    filename: &amp;'a str,
+    lines: usize,
+}
+
+let json = ReportJson { filename: "a.rs", lines: 3 };
+let text = serde_json::to_string_pretty(&amp;json)?;   // Result&lt;String, _&gt;
+// 或 to_string(&amp;json) —— 單行、不縮排</code></pre>
+
+<h2>Deserialize：文字 → Rust 值</h2>
+<pre><code>use serde::Deserialize;
+
+#[derive(Deserialize)]
+struct Config {
+    min: usize,
+}
+
+let cfg: Config = serde_json::from_str(r#"{ "min": 2 }"#)?;</code></pre>
+
+<h2>動態 JSON：Value</h2>
+<pre><code>let value: serde_json::Value = serde_json::from_str(&amp;text)?;
+assert_eq!(value["filename"], "a.rs");
+assert_eq!(value["lines"], 3);</code></pre>
+
+<h2>常用屬性</h2>
+<table>
+<thead>
+<tr><th>屬性</th><th>作用</th></tr>
+</thead>
+<tbody>
+<tr><td><code>#[serde(rename = "file_name")]</code></td><td>JSON key 與欄位名不同時改名</td></tr>
+<tr><td><code>#[serde(skip)]</code></td><td>序列化／反序列化時略過此欄位</td></tr>
+<tr><td><code>#[serde(default)]</code></td><td>反序列化缺欄位時用 Default</td></tr>
+</tbody>
+</table>
+
+<h2>設計習慣</h2>
+<ul>
+<li>內部資料模型（如 <code>Report</code>）與輸出形狀不同時，另建 view struct，不要硬把整包序列化。</li>
+<li>手拼 JSON 字串無法正確處理跳脫字元與巢狀結構——交給 <code>serde_json</code>。</li>
+<li>其他格式：<code>toml</code>、<code>serde_yaml</code> 等，同樣實作 <code>Serialize</code>／<code>Deserialize</code>。</li>
+</ul>
+
+<p class="source">來源：<a href="https://serde.rs/" target="_blank">serde.rs</a>、<a href="https://docs.rs/serde_json" target="_blank">docs.rs/serde_json</a></p>
+</main>
+</body>
+</html>
