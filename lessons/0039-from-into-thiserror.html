@@ -1,0 +1,433 @@
+<!doctype html>
+<html lang="zh-Hant">
+  <head>
+    <meta charset="UTF-8" />
+    <title>Lesson 39 · From / Into 與 thiserror</title>
+    <link rel="stylesheet" href="../assets/style.css" />
+    <script src="../assets/quiz.js"></script>
+  </head>
+  <body>
+    <main>
+      <div class="kicker">Lesson 0039 · Rust · CLI 工具養成路線</div>
+      <h1>From / Into 與 thiserror</h1>
+
+      <div class="byline">
+        <strong>學習目標：</strong>
+        前面的 Lesson 17，你已經看過 <code>impl From</code>， 知道它可以讓
+        <code>?</code> 把 <code>io::Error</code> 轉成
+        <code>AppError</code>。這一課會把這些概念串起來： 先搞懂
+        <code>From</code>，再理解 <code>Into</code>， 最後使用
+        <code>thiserror</code> 把錯誤處理的樣板自動化。
+      </div>
+
+      <h2>1. 先回到我們現在的 <code>AppError</code></h2>
+
+      <p>
+        打開 <code>hello_cli/src/errors.rs</code>。 現在的
+        <code>AppError</code> 大概是這樣：
+      </p>
+
+      <pre><code>#[derive(Debug)]
+pub enum AppError {
+    ReadFailed(std::io::Error),
+    Empty,
+    UnknownFlag(String),
+    MissingValue(String),
+    BadNumber(std::num::ParseIntError),
+}</code></pre>
+
+      <p>
+        這個 enum 本身沒有問題。問題是：為了讓它真的成為一個好用的錯誤型別，
+        我們還需要另外寫一些程式碼。
+      </p>
+
+      <p>
+        例如，我們需要告訴 Rust：「如果我要把 <code>AppError</code>
+        印給使用者看，每一種錯誤要顯示什麼？」
+      </p>
+
+      <pre><code>impl fmt::Display for AppError {
+    fn fmt(&amp;self, f: &amp;mut fmt::Formatter) -&gt; fmt::Result {
+        match self {
+            AppError::ReadFailed(e) =&gt; write!(f, "讀不到檔案：{}", e),
+            AppError::Empty =&gt; write!(f, "空檔案"),
+            // ...
+        }
+    }
+}</code></pre>
+
+      <p>
+        接著，我們還要處理另一件事。假設底層函式回傳：<code
+          >Result&lt;String, std::io::Error&gt;</code
+        >，但我們自己的函式想回傳：<code>Result&lt;String, AppError&gt;</code
+        >，那麼 <code>io::Error</code> 就需要能轉成 <code>AppError</code>。
+        因此又寫了：
+      </p>
+
+      <pre><code>impl From&lt;std::io::Error&gt; for AppError {
+    fn from(e: std::io::Error) -&gt; AppError {
+        AppError::ReadFailed(e)
+    }
+}</code></pre>
+
+      <p><code>ParseIntError</code> 也一樣：</p>
+
+      <pre><code>impl From&lt;std::num::ParseIntError&gt; for AppError {
+    fn from(e: std::num::ParseIntError) -&gt; AppError {
+        AppError::BadNumber(e)
+    }
+}</code></pre>
+
+      <p>
+        於是我們的錯誤型別開始出現一個問題：
+        <strong>每增加一種錯誤，就要到好幾個地方修改。</strong>
+      </p>
+
+      <p>例如新增一個錯誤，可能就要：</p>
+
+      <ul>
+        <li>在 enum 裡增加一個變體</li>
+        <li>在 <code>Display</code> 的 <code>match</code> 裡增加一個分支</li>
+        <li>再寫一個 <code>From</code> implementation</li>
+      </ul>
+
+      <p>
+        這些都不是困難的程式碼，但它們非常機械。 而且真正重要的資訊其實很簡單：
+      </p>
+
+      <pre><code>這個錯誤叫什麼
+→ 要顯示什麼訊息
+→ 要從哪種錯誤轉進來</code></pre>
+
+      <p>
+        我們現在卻需要寫很多樣板才能告訴 Rust 這些事情。
+        <strong>所以這一課的目標，就是把這些樣板收起來。</strong>
+      </p>
+
+      <p>
+        但在使用 <code>thiserror</code> 之前，我們先把其中最重要的一塊搞懂：
+        <code>From</code>。
+      </p>
+
+      <section class="chapter">
+        <h2>2. Rust 錯誤處理的核心：From 與 Into 轉換機制</h2>
+
+        <p>在 Rust 中，處理不同來源的錯誤時，核心關鍵在於型別之間的自動轉換機制。這個機制主要由 <code>From</code> 與 <code>Into</code> 這兩個 Trait 組成。</p>
+
+        <h3>1. <code>From</code> Trait 的核心概念</h3>
+        <p><code>From&lt;A&gt; for B</code> 代表「定義如何將型別 <code>A</code> 轉換為型別 <code>B</code>」。</p>
+
+        <pre><code>impl From&lt;std::io::Error&gt; for AppError {
+    fn from(e: std::io::Error) -&gt; AppError {
+        AppError::ReadFailed(e)
+    }
+}
+
+// 顯式轉換呼叫
+let app_error = AppError::from(io_error);</code></pre>
+
+        <div class="callout tip">
+          💡 <strong>觀念總結：</strong> <code>From</code> 負責定義不同型別之間「如何轉換」的具體規則。
+        </div>
+
+        <h3>2. <code>?</code> 運算子與 <code>From</code> 的協同作業</h3>
+        <p>當函式宣告回傳 <code>Result&lt;T, AppError&gt;</code>，但內部呼叫的 API 回傳 <code>Result&lt;T, io::Error&gt;</code> 時，<code>?</code> 運算子會在失敗時自動尋找對應的 <code>From</code> 實作並完成轉型：</p>
+
+        <pre><code>fn load_report() -&gt; Result&lt;Report, AppError&gt; {
+    // 若失敗，io::Error 會透過 From 自動轉為 AppError 並 return Err
+    let content = std::fs::read_to_string("report.txt")?;
+    // ...
+}</code></pre>
+
+        <p>轉換流程如下：</p>
+        <pre><code>read_to_string() 失敗 ➔ Err(io::Error) ➔ 觸發 From 轉型 ➔ 回傳 Err(AppError)</code></pre>
+
+        <h3>3. <code>Into</code> 與 <code>From</code> 的雙向關係</h3>
+        <p><code>Into</code> 並非新的轉換邏輯，它只是從「來源型別」視角出發的反向語法糖。以下兩種寫法執行的是完全相同的轉換：</p>
+
+        <pre><code>// 1. 以目標型別為主體（From）
+AppError::from(io_error);
+
+// 2. 以來源型別為主體（Into）
+let app_error: AppError = io_error.into();</code></pre>
+
+        <div class="callout tip">
+          💡 <strong>Rust 自動對稱規則：</strong> 只要實作了 <code>From&lt;A&gt; for B</code>，Rust 就會自動補全 <code>Into&lt;B&gt; for A</code>，開發者切勿重複實作 <code>Into</code>。
+        </div>
+
+        <h3>4. 如何心智模型化 <code>.into()</code></h3>
+        <p>在程式碼中看到 <code>value.into()</code> 時，不需視為特殊的語法魔法。請直接理解為：<strong>「依據目標型別需求，自動呼叫預先實作好的 <code>From</code> 規則來轉換轉換型別」</strong>。<code>Into</code> 只是 <code>From</code> 機制的另一個介面入口。例如：</p>
+        <pre><code>let error: AppError = io_error.into();</code></pre>
+
+        <p>可以在腦中翻譯成：</p>
+        <pre><code>io_error
+   ↓
+之前定義好的 From<io::Error> for AppError
+   ↓
+AppError</code></pre>
+        <p>這樣 Into 就不會變成另一個需要死記的概念。 它只是 From 的另一個入口。</p>
+      </section>
+
+      <h2>3. 痛點：手寫 Error 型別有太多的樣板碼（Boilerplate）</h2>
+
+      <p>
+        標準 Rust 錯誤型別需要實現三種能力：<code>Display</code>（錯誤訊息）、<code>From</code>（轉換外部錯誤）與 <code>Error</code>（標示為標準錯誤）。
+      </p>
+
+      <pre><code>AppError
+│
+├─ Display  └─ 錯誤要顯示什麼
+├─ From     └─ 外部錯誤怎麼轉進來
+└─ Error    └─ 宣告這是一個標準的錯誤型別</code></pre>
+
+      <p>
+        以前為了將 <code>std::io::Error</code> 轉成 <code>AppError::ReadFailed</code>，我們必須手寫大量的樣板：
+      </p>
+
+      <pre><code>impl From&lt;std::io::Error&gt; for AppError {
+    fn from(e: std::io::Error) -&gt; AppError {
+        AppError::ReadFailed(e)
+    }
+}</code></pre>
+
+      <p><strong>解決方案：</strong>使用 <code>thiserror</code> 庫，直接把這些轉換與顯示規則宣告在 enum 上。</p>
+
+      <h2>4. 使用 <code>thiserror</code> 重構與屬性解析</h2>
+
+      <p>安裝並導入 <code>thiserror</code> 後，原本冗長的實作可以濃縮為：</p>
+
+      <pre><code>use thiserror::Error;
+
+#[derive(Error, Debug)]
+pub enum AppError {
+    #[error("讀不到檔案：{0}")]
+    ReadFailed(#[from] std::io::Error),
+
+    #[error("空檔案")]
+    Empty,
+
+    #[error("數字格式錯誤：{0}")]
+    BadNumber(#[from] std::num::ParseIntError),
+}</code></pre>
+
+      <p>主要由兩個核心屬性取代手寫程式碼：</p>
+
+      <ul>
+        <li>
+          <code>#[error(...)]</code>：取代手寫 <code>Display</code>。格式化字串中的 <code>{0}</code> 對應變體的第一個欄位。
+        </li>
+        <li>
+          <code>#[from]</code>：取代手寫 <code>From</code>。自動生成轉換邏輯，讓 <code>?</code> 運算子可以直接運作：
+          <pre><code>#[from] → 自動產生 From → 自動得到 Into → 支援 ? 運算子</code></pre>
+        </li>
+      </ul>
+
+      <h2>5. 外部錯誤 vs 自訂錯誤與架構總覽</h2>
+
+      <p>並非每個錯誤變體都需要 <code>#[from]</code>，理解兩者的區別很重要：</p>
+
+      <pre><code>【外部錯誤】
+std::io::Error ──( From / #[from] )──&gt; AppError::ReadFailed
+
+【自訂錯誤】
+程式判斷「檔案是空的」 ──( 直接建立 )──&gt; AppError::Empty</code></pre>
+
+      <p>最後，<code>#[derive(Error, Debug)]</code> 自動整合所有元件，幫我們省去了手寫 <code>std::error::Error</code> 的心智負擔：</p>
+
+      <pre><code>#[derive(Error, Debug)]
+│
+├── Debug
+└── Error
+      │
+      ├── #[error(...)] → 自動產生 Display 訊息
+      └── #[from]       → 自動產生 From 轉換</code></pre>
+
+      <h2>6. 前後對照</h2>
+
+      <div class="compare compare-before">
+        <div class="kicker">🔴 手寫 Display + From</div>
+        <pre><code>impl fmt::Display for AppError {
+    fn fmt(&amp;self, f: &amp;mut fmt::Formatter) -&gt; fmt::Result {
+        match self { /* 每個變體一行 write! */ }
+    }
+}
+
+impl From&lt;std::io::Error&gt; for AppError {
+    fn from(e: std::io::Error) -&gt; AppError {
+        AppError::ReadFailed(e)
+    }
+}
+// BadNumber 再來一個 From...</code></pre>
+      </div>
+
+      <div class="compare compare-after">
+        <div class="kicker">🟢 thiserror 屬性</div>
+        <pre><code>#[derive(Error, Debug)]
+pub enum AppError {
+    #[error("讀不到檔案：{0}")]
+    ReadFailed(#[from] std::io::Error),
+    #[error("空檔案")]
+    Empty,
+    // ...
+}</code></pre>
+      </div>
+
+      <p>
+        行為不變：<code>load_report</code> 裡的 <code>?</code> 照舊、<code
+          >eprintln!("{}", error)</code
+        >
+        照舊、訊息字串也照舊。變的是訊息與轉換規則都寫在變體旁邊，不用再到檔案另一頭找
+        <code>match</code>。
+      </p>
+
+      <h2>7. 動手做</h2>
+
+      <ol>
+        <li>
+          在 <code>hello_cli/</code> 執行 <code>cargo add thiserror</code>。
+        </li>
+        <li>
+          改寫 <code>errors.rs</code>：刪掉手寫的
+          <code>impl Display</code> 與兩個 <code>impl From</code>，改成上面的
+          <code>#[derive(Error, Debug)]</code> 版本。記得
+          <code>use thiserror::Error;</code>。
+        </li>
+        <li>
+          跑 <code>cargo test</code>。既有測試加上
+          <code>errors</code> 模組裡的兩支測試都要通過——尤其是
+          <code>io_error_converts_via_into</code>。
+        </li>
+        <li>
+          再跑一次失敗路徑確認訊息沒變：
+          <code>cargo run -- no-such-file.rs</code>，stderr
+          應仍以「讀不到檔案：」開頭。
+        </li>
+      </ol>
+
+      <div class="callout tip">
+        💡 <code>main.rs</code>、<code>report.rs</code>、<code
+          >formatter.rs</code
+        >
+        都不需要改。錯誤的<strong>形狀</strong>與<strong>訊息</strong>沒變，只是產生
+        <code>Display</code>／<code>From</code>／<code>Error</code> 的方式變了。
+      </div>
+
+      <h2>8. 檢查你記得多少</h2>
+
+      <div class="quiz" data-mcq data-answer="2">
+        <div class="q">
+          你寫了
+          <code>impl From&lt;io::Error&gt; for AppError</code> 之後，還需要手寫
+          <code>impl Into&lt;AppError&gt; for io::Error</code> 嗎？
+        </div>
+        <div class="choices">
+          <button>需要，否則 .into() 不能用</button>
+          <button>不需要，From 會自動帶出 Into</button>
+          <button>需要，而且要跟 From 寫成不一樣的轉換</button>
+          <button>不需要，因為 Into 已經被 ? 取代、永遠用不到</button>
+        </div>
+        <div
+          class="feedback"
+          data-ok="答對了。實作 From&lt;A&gt; for B 之後，Into&lt;B&gt; for A 會自動存在；手寫兩邊反而容易不一致。"
+          data-bad="再看一次第 2 節 callout 裡的規則。From 與 Into 是同一轉換的兩面——哪一面需要你手寫？"
+        ></div>
+      </div>
+
+      <div class="quiz" data-mcq data-answer="3">
+        <div class="q">
+          <code>#[from]</code> 放在
+          <code>ReadFailed(#[from] std::io::Error)</code>
+          上，主要產生什麼？
+        </div>
+        <div class="choices">
+          <button>只產生 Display 訊息</button>
+          <button>只產生 Debug</button>
+          <button>
+            產生 From&lt;io::Error&gt; for AppError（因此 ? 與 .into() 可用）
+          </button>
+          <button>把 io::Error 從程式裡刪掉</button>
+        </div>
+        <div
+          class="feedback"
+          data-ok="答對了。#[from] 會產生 From 實作；? 與 .into() 都靠這條轉換鏈。"
+          data-bad="再看一次第 4 節的表格。Display 訊息是哪個屬性負責？轉換又是哪個屬性？"
+        ></div>
+      </div>
+
+      <div class="quiz" data-mcq data-answer="1">
+        <div class="q">
+          為什麼 <code>Empty</code> 變體通常不加 <code>#[from]</code>？
+        </div>
+        <div class="choices">
+          <button>它是自己判斷後直接建構的，不是從另一種 Error 轉進來</button>
+          <button>thiserror 不允許 unit 變體用屬性</button>
+          <button>Empty 已經實作了 Into</button>
+          <button>加了 #[from] 會讓 ? 失效</button>
+        </div>
+        <div
+          class="feedback"
+          data-ok="答對了。自訂錯誤用 Err(AppError::Empty) 直接建；只有「轉發外部 Result 的錯誤」才需要 From／#[from]。"
+          data-bad="再想一下 Lesson 17 的分類：轉發外部錯誤 vs 自訂錯誤。Empty 屬於哪一種？"
+        ></div>
+      </div>
+
+      <div class="win">
+        <div class="kicker">這一課的成果</div>
+        錯誤處理這條線到這裡告一段落：你知道轉換從哪來，也知道樣板可以交給
+        crate。
+        <br /><br />
+        三件帶走的事：
+        <ul>
+          <li>
+            <code>From</code>／<code>Into</code>——同一轉換的兩面；實作
+            <code>From</code>，免費得到 <code>Into</code>
+          </li>
+          <li>
+            <code>std::error::Error</code>——給錯誤型別一枚完工章；函式庫常在
+            bound 裡要求它
+          </li>
+          <li>
+            <code>thiserror</code>——用 <code>#[error]</code> 與
+            <code>#[from]</code> 產生
+            <code>Display</code>、<code>Error</code>、<code>From</code>
+          </li>
+        </ul>
+        <br />
+        下一課會處理大檔案：<code>BufReader</code> 與 streaming
+        I/O，讓工具不必一次把整份內容讀進記憶體。 <br /><br />
+        速查表：<a href="../reference/from-into-thiserror.html"
+          >From / Into 與 thiserror 速查</a
+        >。
+      </div>
+
+      <p class="source">
+        主要參考資料：
+        <a
+          href="https://doc.rust-lang.org/std/convert/trait.From.html"
+          target="_blank"
+          >std::convert::From</a
+        >、
+        <a
+          href="https://doc.rust-lang.org/std/convert/trait.Into.html"
+          target="_blank"
+          >std::convert::Into</a
+        >、
+        <a href="https://docs.rs/thiserror" target="_blank"
+          >thiserror（docs.rs）</a
+        >。
+      </p>
+
+      <nav class="lesson-links">
+        <a href="0038-serde.html"> &larr; 上一課：Serde — 結構化序列化 </a>
+        <a href="0040-bufreader-streaming-io.html"
+          >下一課：BufReader 與 streaming I/O &rarr;</a
+        >
+      </nav>
+
+      <p class="ask-agent">
+        卡住了、或有任何看不懂的地方，直接問我（你的 AI 教學助手）就好 ——
+        隨時可以打斷這個流程提問。
+      </p>
+    </main>
+  </body>
+</html>

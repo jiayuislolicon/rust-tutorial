@@ -1,0 +1,82 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="UTF-8">
+<title>Reference · From / Into 與 thiserror</title>
+<link rel="stylesheet" href="../assets/style.css">
+</head>
+<body>
+<main>
+<div class="kicker">Reference · 速查表</div>
+<h1>From / Into 與 thiserror</h1>
+
+<p>
+  來自 <a href="../lessons/0039-from-into-thiserror.html">Lesson 39</a>。
+  <strong>實作 From，免費得到 Into；thiserror 用屬性產生 Display、Error、From。</strong>
+</p>
+
+<h2>From 與 Into</h2>
+<pre><code>impl From&lt;std::io::Error&gt; for AppError {
+    fn from(e: std::io::Error) -&gt; AppError {
+        AppError::ReadFailed(e)
+    }
+}
+
+// 上面寫完之後，下面兩行等價：
+let a = AppError::from(io_err);
+let b: AppError = io_err.into();   // Into 自動存在，不要手寫 impl Into</code></pre>
+
+<ul>
+<li><code>?</code> 轉發錯誤時會呼叫 <code>From::from</code>。</li>
+<li>只實作 <code>From&lt;A&gt; for B</code>；不要同時手寫 <code>Into&lt;B&gt; for A</code>。</li>
+<li>自訂錯誤（如 <code>Err(AppError::Empty)</code>）本來就是目標型別，不需要 <code>From</code>。</li>
+</ul>
+
+<h2>thiserror</h2>
+<pre><code>cargo add thiserror</code></pre>
+
+<pre><code>use thiserror::Error;
+
+#[derive(Error, Debug)]
+pub enum AppError {
+    #[error("讀不到檔案：{0}")]
+    ReadFailed(#[from] std::io::Error),
+
+    #[error("空檔案")]
+    Empty,
+
+    #[error("未知旗標：{0}")]
+    UnknownFlag(String),
+
+    #[error("數字格式錯誤：{0}")]
+    BadNumber(#[from] std::num::ParseIntError),
+}</code></pre>
+
+<table>
+<thead>
+<tr><th>屬性</th><th>作用</th></tr>
+</thead>
+<tbody>
+<tr><td><code>#[derive(Error)]</code></td><td>產生 <code>Display</code> + <code>std::error::Error</code></td></tr>
+<tr><td><code>#[error("...")]</code></td><td>該變體的顯示訊息；<code>{0}</code>／<code>{field}</code> 插值</td></tr>
+<tr><td><code>#[from]</code></td><td>產生 <code>From&lt;欄位型別&gt;</code>（並標記為 <code>source</code>）</td></tr>
+</tbody>
+</table>
+
+<h2>跟 anyhow 的分工</h2>
+<ul>
+<li><code>thiserror</code>：定義<strong>有形狀</strong>的錯誤 enum（函式庫、可 match 的變體）——這一課用的。</li>
+<li><code>anyhow</code>：應用程式裡一個「什麼錯都行」的錯誤型別，著重加 context。兩者常一起出現，但角色不同。</li>
+</ul>
+
+<p class="source">
+來源：
+<a href="https://doc.rust-lang.org/std/convert/trait.From.html" target="_blank">std::convert::From</a>、
+<a href="https://doc.rust-lang.org/std/convert/trait.Into.html" target="_blank">std::convert::Into</a>、
+<a href="https://docs.rs/thiserror" target="_blank">docs.rs/thiserror</a>。
+相關：<a href="question-mark-operator.html">? 與 From 參考卡</a>、
+<a href="error-handling-and-custom-errors.html">自訂錯誤參考卡</a>。
+</p>
+</main>
+</body>
+</html>

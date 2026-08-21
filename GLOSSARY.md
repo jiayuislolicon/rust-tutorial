@@ -132,7 +132,10 @@ Defines a type by listing the fixed set of shapes a value can take — a **varia
 Placed after an expression that returns [[Result]] (or `Option`): on `Ok(v)` the expression evaluates to `v` and execution continues; on `Err(e)` the whole function returns `Err(e)` immediately. Only legal inside a function whose own return type is `Result`/`Option`. Replaces the boilerplate `match ... { Err(e) => return Err(e), Ok(v) => v }`. If the error type doesn't match the function's declared error type, `?` converts it automatically via [[From trait]] — without a matching `impl From`, it fails to compile.
 
 **From trait**:
-`impl From<A> for B` teaches type `B` how to be built from a value of type `A`, via a `fn from(a: A) -> B` method. The [[`?` operator]] calls this automatically when the error type it sees doesn't match the function's declared error type — e.g. `impl From<std::io::Error> for AppError` lets `?` turn an `io::Error` into an `AppError` without writing the conversion by hand at every call site.
+`impl From<A> for B` teaches type `B` how to be built from a value of type `A`, via a `fn from(a: A) -> B` method. The [[`?` operator]] calls this automatically when the error type it sees doesn't match the function's declared error type — e.g. `impl From<std::io::Error> for AppError` lets `?` turn an `io::Error` into an `AppError` without writing the conversion by hand at every call site. Implementing `From` automatically provides the matching [[Into trait]].
+
+**Into trait**:
+The flip side of [[From trait]]: `value.into()` converts a value into a target type inferred from context (e.g. `let app: AppError = io_err.into()`). You implement `From<A> for B` and get `Into<B> for A` for free — do not hand-write both. See [[Lesson 39]].
 
 **`if let`**:
 Shorthand for a [[match]] that only cares about one variant, e.g. `if let Err(error) = run() { ... }`. Unlike `match`, it doesn't require every variant to have a branch — the pattern either matches (run the block) or it doesn't (skip it, do nothing). Use it when every other branch would just be an empty `{}`.
@@ -168,7 +171,7 @@ Marks a function as a test — `cargo test` runs every function tagged with it a
 Compiles the item below it only when running `cargo test`. Placed above `mod tests { ... }` so test code never ships inside the binary built by `cargo build`/`cargo run`.
 
 **`#[derive(...)]`**:
-An [[Attribute (`#[...]`)]] that writes an `impl Trait for Type` block for you, following one fixed mechanical rule per trait — e.g. `#[derive(PartialEq)]` on an enum means "equal if same variant, and any data inside it is also equal." Only works when the fields alone determine that one rule; `Display` can't be derived because the exact text to print is a human choice, which is why `impl fmt::Display for AppError` in `hello_cli/src/errors.rs` is hand-written. A struct or enum can only derive a trait if every one of its own fields also implements that trait. See [[Trait]].
+An [[Attribute (`#[...]`)]] that writes an `impl Trait for Type` block for you, following one fixed mechanical rule per trait — e.g. `#[derive(PartialEq)]` on an enum means "equal if same variant, and any data inside it is also equal." Only works when the fields alone determine that one rule; standard-library `Display` can't be derived that way because the exact text to print is a human choice. ([[thiserror]]'s `#[derive(Error)]` is different: you still write the message yourself in `#[error("...")]`, and the crate generates the `Display` impl from it.) A struct or enum can only derive a trait if every one of its own fields also implements that trait. See [[Trait]].
 
 **`assert_eq!` / `assert!`**:
 Test-time checks. `assert_eq!(a, b)` panics if `a != b`, printing both actual values. `assert!(cond)` panics if `cond` is `false`. A panic inside a `#[test]` function doesn't crash `cargo test` as a whole — that one test is marked `FAILED` and the rest still run.
@@ -325,3 +328,9 @@ A dynamically typed JSON value (`Null`, `Bool`, `Number`, `String`, `Array`, `Ob
 
 **View struct（輸出用結構）**:
 A small struct that holds only the fields you want to serialize, separate from your internal data model. Used when `#[derive(Serialize)]` on the real type would include fields you don't want in the output (e.g. `Report.content`). See [[Lesson 38]].
+
+**`std::error::Error`**:
+The standard marker trait for error types. Requires [[Display trait]] and `Debug`. Many library APIs bound `E: Error`. Also provides `source()` for the underlying cause. [[thiserror]] implements it for you when you `#[derive(Error)]`.
+
+**thiserror**:
+A crate that derives `Display`, [[`std::error::Error`]], and optional [[From trait]] impls for your error enum. `#[error("...")]` supplies each variant's message; `#[from]` on a field generates `From` for that field's type (so [[`?` operator]] and [[Into trait]] keep working). See [[Lesson 39]].

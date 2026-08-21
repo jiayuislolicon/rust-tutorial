@@ -12,6 +12,8 @@
   Official Rust CLI working group's guide. Use for: everything CLI-specific — argument parsing (clap), error handling patterns, packaging/distribution — directly tied to the mission.
 - [std library docs](https://doc.rust-lang.org/std/)
   Authoritative API reference. Use for: citing exact behavior of stdlib types (String, Option, Result, Vec, etc.) in lessons.
+- [thiserror (docs.rs)](https://docs.rs/thiserror)
+  Derive macros for `Display` / `Error` / `From` on custom error enums. Use for: Lesson 39 and any later error-type cleanup.
 
 ## Wisdom (Communities)
 

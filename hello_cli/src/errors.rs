@@ -1,34 +1,38 @@
-use std::fmt;
+use thiserror::Error;
 
-#[derive(Debug)]
+#[derive(Error, Debug)]
 pub enum AppError {
-    ReadFailed(std::io::Error),
+    #[error("讀不到檔案：{0}")]
+    ReadFailed(#[from] std::io::Error),
+
+    #[error("空檔案")]
     Empty,
+
+    #[error("未知旗標：{0}")]
     UnknownFlag(String),
-    MissingValue(String),
-    BadNumber(std::num::ParseIntError),
+
+    #[error("數字格式錯誤：{0}")]
+    BadNumber(#[from] std::num::ParseIntError),
 }
 
-impl fmt::Display for AppError {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        match self {
-            AppError::ReadFailed(e) => write!(f, "讀不到檔案：{}", e),
-            AppError::Empty => write!(f, "空檔案"),
-            AppError::UnknownFlag(flag) => write!(f, "未知旗標：{}", flag),
-            AppError::MissingValue(flag) => write!(f, "{} 後面少了一個數字", flag),
-            AppError::BadNumber(e) => write!(f, "數字格式錯誤：{}", e),
-        }
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn display_empty_and_unknown_flag() {
+        assert_eq!(AppError::Empty.to_string(), "空檔案");
+        assert_eq!(
+            AppError::UnknownFlag("--xml".to_string()).to_string(),
+            "未知旗標：--xml"
+        );
     }
-}
 
-impl From<std::io::Error> for AppError {
-    fn from(e: std::io::Error) -> AppError {
-        AppError::ReadFailed(e)
-    }
-}
-
-impl From<std::num::ParseIntError> for AppError {
-    fn from(e: std::num::ParseIntError) -> AppError {
-        AppError::BadNumber(e)
+    #[test]
+    fn io_error_converts_via_into() {
+        let io = std::io::Error::new(std::io::ErrorKind::NotFound, "gone");
+        let app: AppError = io.into();
+        assert!(matches!(app, AppError::ReadFailed(_)));
+        assert!(app.to_string().starts_with("讀不到檔案："));
     }
 }
