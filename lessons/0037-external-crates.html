@@ -1,0 +1,566 @@
+<!doctype html>
+<html lang="zh-Hant">
+  <head>
+    <meta charset="UTF-8" />
+    <title>Lesson 37 · 外部 Crate —— 你的第一個 Cargo 依賴</title>
+    <link rel="stylesheet" href="../assets/style.css" />
+    <script src="../assets/quiz.js"></script>
+  </head>
+  <body>
+    <main>
+      <div class="kicker">Lesson 0037 · Rust · CLI 工具養成路線</div>
+      <h1>外部 Crate —— 你的第一個 Cargo 依賴</h1>
+
+      <div class="byline">
+        <strong>學習目標：</strong>
+        到目前為止，你的工具只用過標準函式庫（<code>std</code>）。這一課要走出
+        <code>std</code> 的世界：從 crates.io 拉進第一個外部依賴
+        <code>clap</code>，把手寫了六課的參數解析器，換成用一個 struct 加
+        derive 就能描述完畢的寫法。
+      </div>
+
+      <h2>1. 二十行的 match 與一個老問題</h2>
+
+      <p>
+        打開 <code>main.rs</code>，看看 <code>run()</code> 裡那段
+        <code>while let</code> 配上 <code>match</code> 的程式碼：
+      </p>
+
+      <pre><code>while let Some(arg) = args.next() {
+    match arg.as_str() {
+        "--count-only" =&gt; count_only = true,
+        "--words"      =&gt; words_count_only = true,
+        "--min"        =&gt; match args.next() { ... },
+        "--format"     =&gt; match args.next() { ... },
+        "--grep"       =&gt; match args.next() { ... },
+        _ if arg.starts_with("-") =&gt; return Err(...),
+        _ =&gt; filename = Some(arg),
+    }
+}</code></pre>
+
+      <p>
+        每加一個旗標，就多一個 <code>match</code> 分支、多一個變數、多一段「後面少了值」的錯誤處理。使用者打
+        <code>--help</code> 也看不到任何說明——因為你從來沒實作過它。
+      </p>
+
+      <p>
+        參數解析是被解決了幾十年的老問題。Rust 社群早就有成熟的 crate
+        可以用，這件事不需要自己從頭寫。
+      </p>
+
+      <h2>2. Rust 的套件生態系：crates.io</h2>
+
+      <p>
+        到目前為止，你用過的每一個型別和函式——<code>String</code>、<code>Vec</code>、<code>HashMap</code>、<code>fs::read_to_string</code>——都來自
+        Rust 的<strong>標準函式庫</strong>（<code>std</code>）。它隨 Rust
+        一起安裝，不需要額外下載。
+      </p>
+
+      <p>
+        Rust 生態系裡還有數以萬計的<strong>外部 crate</strong>，全部集中在一個叫
+        <a href="https://crates.io/" target="_blank">crates.io</a>
+        的公開登錄處（registry）。任何人都可以把自己寫的 library
+        發佈上去，任何人也都可以拉下來用。
+      </p>
+
+      <pre><code>std         →  Rust 內建的，什麼都不用裝
+crates.io   →  社群維護的，cargo 會幫你下載</code></pre>
+
+      <h2>3. cargo add：加入一個依賴</h2>
+
+      <p>
+        第一個要加的外部 crate 是
+        <code>clap</code>——Rust 生態系裡最廣泛使用的命令列參數解析器。在
+        <code>hello_cli/</code> 目錄裡執行：
+      </p>
+
+      <pre><code>cargo add clap --features derive</code></pre>
+
+      <p>這一行做了兩件事：</p>
+
+      <ol>
+        <li>從 crates.io 查出 <code>clap</code> 目前的最新版本。</li>
+        <li>
+          在 <code>Cargo.toml</code> 的 <code>[dependencies]</code> 區段加上一行。
+        </li>
+      </ol>
+
+      <p>打開 <code>Cargo.toml</code>，你會看到它變成：</p>
+
+      <pre><code>[dependencies]
+clap = { version = "4", features = ["derive"] }</code></pre>
+
+      <p>
+        <code>version = "4"</code>
+        是語意版本（semver）——代表「4.x.y 都可以，只要 API
+        不破壞性改變就行」。
+        <code>features = ["derive"]</code> 則開啟了 <code>clap</code>
+        的一個可選功能：讓你用 <code>#[derive(Parser)]</code>
+        定義參數，而不是比較囉嗦的 builder API。
+      </p>
+
+      <div class="callout">
+        💡 <strong>什麼是 feature？</strong> Rust 的 crate
+        可以把某些功能放在 feature flag 後面；沒有開啟的 feature
+        不會被編譯，可以減少編譯時間和二進位檔大小。
+        <code>clap</code> 的 <code>derive</code> feature
+        需要額外的程序巨集（proc-macro）機制，所以它是可選的。
+      </div>
+
+      <h2>4. docs.rs：怎麼讀外部 crate 的文件</h2>
+
+      <p>
+        加入依賴之後，你會需要讀它的文件。每一個發佈到 crates.io 的
+        crate，都會自動在
+        <a href="https://docs.rs/" target="_blank">docs.rs</a>
+        產生 API 文件。格式和 <code>std</code> 的官方文件一模一樣——因為用的是同一個工具（<code>rustdoc</code>）。
+      </p>
+
+      <p>要看 <code>clap</code> 的文件，直接打開：</p>
+
+      <pre><code>https://docs.rs/clap</code></pre>
+
+      <p>
+        docs.rs 是你和外部 crate 打交道時最常開的頁面。搜尋
+        struct、翻範例、看 method 簽名——你在 <code>std</code>
+        文件裡做的每一件事，在 docs.rs 上操作方式完全相同。
+      </p>
+
+      <h2>5. 用 clap 重寫參數解析</h2>
+
+      <p>重寫從 import 開始。先在 <code>main.rs</code> 最上方加上：</p>
+
+      <pre><code>use clap::Parser;</code></pre>
+
+      <p>然後定義一個 struct 來描述你的命令列介面：</p>
+
+      <pre><code>/// 分析原始碼檔案的小工具
+#[derive(Parser)]
+struct Cli {
+    /// 要分析的檔案
+    filename: Option&lt;String&gt;,
+
+    /// 只印行數摘要
+    #[arg(long)]
+    count_only: bool,
+
+    /// 只印詞頻統計
+    #[arg(long)]
+    words: bool,
+
+    /// 詞頻篩選門檻
+    #[arg(long, default_value_t = 1)]
+    min: usize,
+
+    /// 輸出格式 (plain / json)
+    #[arg(long, default_value = "plain")]
+    format: String,
+
+    /// 搜尋包含此關鍵字的行
+    #[arg(long)]
+    grep: Option&lt;String&gt;,
+}</code></pre>
+
+      <p>每個欄位都直接對應一個命令列參數。下面幾個重點值得記一下：</p>
+
+      <ul>
+        <li>
+          <code>#[derive(Parser)]</code> 讓 clap
+          幫你產生解析程式碼——概念和你用 <code>#[derive(Debug)]</code>
+          讓編譯器產生 debug 格式化一樣。
+        </li>
+        <li>
+          <code>///</code> 文件註解會自動變成
+          <code>--help</code> 裡的說明文字。
+        </li>
+        <li>
+          <code>Option&lt;String&gt;</code>
+          代表這個參數可以不給——clap 看到 <code>Option</code>
+          就知道它是可選的。
+        </li>
+        <li>
+          <code>bool</code>
+          代表開關型旗標——有給就是 <code>true</code>，沒給就是
+          <code>false</code>。
+        </li>
+        <li>
+          <code>#[arg(long)]</code> 表示這是 <code>--</code>
+          開頭的長旗標。欄位名的底線會自動轉成連字號：<code>count_only</code>
+          → <code>--count-only</code>。
+        </li>
+        <li>
+          <code>default_value_t = 1</code>
+          直接給目標型別的值作為預設值。另一個寫法是
+          <code>default_value = "plain"</code>，給的是字串，clap
+          會在執行時把它 parse 成目標型別。簡單記法：值本身是字串就用
+          <code>default_value</code>，值是數字或其他型別就用
+          <code>default_value_t</code>。
+        </li>
+      </ul>
+
+      <p>
+        定義好 struct 之後，<code>run()</code> 只需要一行就能拿到所有參數：
+      </p>
+
+      <pre><code>fn run() -&gt; Result&lt;(), AppError&gt; {
+    let cli = Cli::parse();
+
+    let formatter = make_formatter(&amp;cli.format)
+        .ok_or_else(|| AppError::UnknownFlag(format!("--format {}", cli.format)))?;
+
+    let filename = match cli.filename {
+        Some(name) =&gt; name,
+        None =&gt; {
+            println!("用法：hello_cli [OPTIONS] &lt;檔名&gt;");
+            return Ok(());
+        }
+    };
+
+    let report = load_report(&amp;filename)?;
+
+    if let Some(ref pattern) = cli.grep {
+        for line in report.matching_lines(pattern) {
+            println!("{}", line);
+        }
+        return Ok(());
+    }
+
+    if cli.words {
+        let counts = report.word_counts();
+        let mut pairs: Vec&lt;_&gt; = counts.iter().collect();
+        pairs.retain(|pair| *pair.1 &gt;= cli.min);
+        pairs.sort_by(|a, b| b.1.cmp(a.1));
+        for (word, count) in pairs {
+            println!("{}: {}", word, count);
+        }
+        return Ok(());
+    }
+
+    if cli.count_only {
+        println!("{}", report.summary());
+    } else {
+        println!("{}", formatter.format_report(&amp;report));
+    }
+
+    Ok(())
+}</code></pre>
+
+      <p>
+        整段 <code>while let</code> + <code>match</code> 消失了。
+        <code>Cli::parse()</code>
+        一行讀完所有參數、驗證格式、印出錯誤訊息。之後你只需要讀
+        <code>cli</code> 的欄位，就像讀一個普通 struct 一樣。
+      </p>
+
+      <h2>6. 你的工具現在免費送了 --help</h2>
+
+      <p>試試看：</p>
+
+      <pre><code>cargo run -- --help</code></pre>
+
+      <pre><code>分析原始碼檔案的小工具
+
+Usage: hello_cli [OPTIONS] [FILENAME]
+
+Arguments:
+  [FILENAME]  要分析的檔案
+
+Options:
+      --count-only           只印行數摘要
+      --words                只印詞頻統計
+      --min &lt;MIN&gt;            詞頻篩選門檻 [default: 1]
+      --format &lt;FORMAT&gt;      輸出格式 (plain / json) [default: plain]
+      --grep &lt;GREP&gt;          搜尋包含此關鍵字的行
+  -h, --help                 Print help</code></pre>
+
+      <p>
+        clap 從你的 struct 定義自動產生了完整的 help 頁面。
+        <code>///</code> 寫的文件註解變成了說明文字，<code>Option</code>
+        讓參數顯示為可選，<code>default_value</code>
+        也標出來了——你完全不需要手動拼字串。
+      </p>
+
+      <p>試試給一個不存在的旗標：</p>
+
+      <pre><code>cargo run -- --oops file.txt</code></pre>
+
+      <pre><code>error: unexpected argument '--oops' found
+
+Usage: hello_cli [OPTIONS] [FILENAME]
+
+For more information, try '--help'.</code></pre>
+
+      <p>
+        以前你要自己寫 <code>AppError::UnknownFlag</code>
+        來處理這種情況。現在 clap 在你的程式碼跑到
+        <code>run()</code> 之前就已經把它攔下來了。
+      </p>
+
+      <h2>7. 比較前後</h2>
+
+      <div class="compare compare-before">
+        <div class="kicker">🔴 手寫解析——20 行 match + 7 個變數</div>
+        <pre><code>let mut filename: Option&lt;String&gt; = None;
+let mut count_only: bool = false;
+let mut words_count_only: bool = false;
+let mut min: usize = 1;
+let mut format = String::from("plain");
+let mut grep: Option&lt;String&gt; = None;
+
+while let Some(arg) = args.next() {
+    match arg.as_str() {
+        "--count-only" =&gt; count_only = true,
+        "--words"      =&gt; words_count_only = true,
+        "--min"        =&gt; match args.next() { ... },
+        "--format"     =&gt; match args.next() { ... },
+        "--grep"       =&gt; match args.next() { ... },
+        _ if arg.starts_with("-") =&gt; return Err(...),
+        _ =&gt; filename = Some(arg),
+    }
+}</code></pre>
+      </div>
+
+      <div class="compare compare-after">
+        <div class="kicker">🟢 clap derive——一個 struct + 一行 parse</div>
+        <pre><code>#[derive(Parser)]
+struct Cli {
+    filename: Option&lt;String&gt;,
+    #[arg(long)] count_only: bool,
+    #[arg(long)] words: bool,
+    #[arg(long, default_value_t = 1)] min: usize,
+    #[arg(long, default_value = "plain")] format: String,
+    #[arg(long)] grep: Option&lt;String&gt;,
+}
+
+let cli = Cli::parse();</code></pre>
+      </div>
+
+      <p>
+        手寫版不是「錯的」——過去幾課你藉著它學會了
+        <code>while let</code>、<code>match</code>、<code>Result</code>
+        回傳。概念內化之後，就可以把重複的苦工交給專門的
+        crate，把注意力放在工具本身的邏輯上。
+      </p>
+
+      <h2>8. Cargo.lock</h2>
+
+      <p>
+        跑完 <code>cargo add</code> 之後，你的專案裡多了一個
+        <code>Cargo.lock</code>
+        檔案（如果之前沒有依賴，這是第一次出現）。它記錄了
+        <code>clap</code> 以及 clap 自己依賴的所有 crate
+        的<strong>精確版本號</strong>。
+      </p>
+
+      <p>
+        可以把這兩個檔案想成不同的精度：<code>Cargo.toml</code>
+        寫的是「我想要 4.x.y」；<code>Cargo.lock</code> 寫的是「我這次編譯用的是
+        4.5.23」。下次你（或別人）再跑 <code>cargo build</code>，Cargo 會讀
+        <code>Cargo.lock</code>
+        確保用的是同一個版本，不會悄悄升級。
+      </p>
+
+      <p>
+        對二進位 crate（也就是你正在寫的工具），<strong><code>Cargo.lock</code>
+        應該提交到版本控制</strong>。這樣任何人 clone
+        你的 repo 之後，編譯出來的東西會跟你的一模一樣。
+      </p>
+
+      <h2>9. 什麼時候該找 crate？什麼時候自己寫？</h2>
+
+      <p>
+        沒有硬性規則，但下面幾個問題可以幫你判斷：
+      </p>
+
+      <table>
+        <thead>
+          <tr>
+            <th>考量</th>
+            <th>自己寫</th>
+            <th>找 crate</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>你正在學習這個概念</td>
+            <td>✓</td>
+            <td></td>
+          </tr>
+          <tr>
+            <td>這是一個被解決了很多年的問題</td>
+            <td></td>
+            <td>✓</td>
+          </tr>
+          <tr>
+            <td>你的需求很簡單，三五行就搞定</td>
+            <td>✓</td>
+            <td></td>
+          </tr>
+          <tr>
+            <td>你不想自己維護各種邊界案例的測試</td>
+            <td></td>
+            <td>✓</td>
+          </tr>
+          <tr>
+            <td>安全性很重要（加密、TLS）</td>
+            <td></td>
+            <td>✓</td>
+          </tr>
+        </tbody>
+      </table>
+
+      <p>
+        前面手寫參數解析器，是因為那幾課的重點是
+        <code>match</code>、<code>while let</code>、<code>Result</code>。概念學會了，就可以把這塊換成社群維護了十幾年的
+        crate。
+      </p>
+
+      <h2>10. 動手做</h2>
+
+      <p>照下面五步做一遍：</p>
+
+      <ol>
+        <li>
+          在 <code>hello_cli/</code> 目錄執行
+          <code>cargo add clap --features derive</code>。
+        </li>
+        <li>
+          在 <code>main.rs</code> 定義 <code>Cli</code> struct，用
+          <code>#[derive(Parser)]</code>。
+        </li>
+        <li>
+          把 <code>run()</code> 裡的手寫解析迴圈換成
+          <code>Cli::parse()</code>，用 <code>cli.欄位名</code>
+          取代原本的區域變數。
+        </li>
+        <li>
+          跑 <code>cargo test</code> 確認原有測試仍然通過。
+        </li>
+        <li>
+          跑 <code>cargo run -- --help</code>
+          確認你的工具現在有完整的說明頁面。
+        </li>
+      </ol>
+
+      <div class="callout tip">
+        💡 換完解析邏輯之後，<code>use std::env;</code>
+        可以拿掉了——那是手寫版才需要的。但 <code>report.rs</code> 和
+        <code>formatter.rs</code> 完全不需要改。
+      </div>
+
+      <h2>11. 檢查你記得多少</h2>
+
+      <div class="quiz" data-mcq data-answer="2">
+        <div class="q">
+          <code>cargo add clap --features derive</code> 做了什麼？
+        </div>
+        <div class="choices">
+          <button>把 clap 的原始碼複製到你的 src/ 目錄</button>
+          <button>
+            在 Cargo.toml 的 [dependencies] 加上 clap，並啟用 derive feature
+          </button>
+          <button>把 clap 安裝成全域命令列工具</button>
+          <button>
+            在 Cargo.lock 裡鎖定 clap 的版本，但不修改 Cargo.toml
+          </button>
+        </div>
+        <div
+          class="feedback"
+          data-ok="答對了。cargo add 修改的是 Cargo.toml；下次 cargo build 時，Cargo 才會真正下載程式碼並編譯。"
+          data-bad="再想一下… cargo add 改的是哪個檔案？它不會複製原始碼到你的 src/，也不是安裝全域工具。"
+        ></div>
+      </div>
+
+      <div class="quiz" data-mcq data-answer="3">
+        <div class="q">
+          在 clap 的 derive API 裡，一個欄位寫成
+          <code>grep: Option&lt;String&gt;</code> 代表什麼？
+        </div>
+        <div class="choices">
+          <button>
+            使用者必須提供 --grep，不然程式會 panic
+          </button>
+          <button>clap 會忽略這個欄位</button>
+          <button>
+            這個參數是可選的；沒給就是 None
+          </button>
+          <button>clap 會自動幫你搜尋檔案內容</button>
+        </div>
+        <div
+          class="feedback"
+          data-ok="答對了。clap 看到 Option&lt;T&gt; 就知道這個參數可以不給——和你在 Rust 裡學到的 Option 語意完全一致。"
+          data-bad="再看一次 struct 裡 grep 欄位的型別。Option 代表「可能有、可能沒有」——clap 用這個型別來判斷參數是否為必填。"
+        ></div>
+      </div>
+
+      <div class="quiz" data-mcq data-answer="1">
+        <div class="q">
+          <code>Cargo.lock</code> 和 <code>Cargo.toml</code>
+          的關係是？
+        </div>
+        <div class="choices">
+          <button>
+            Cargo.toml 指定版本範圍，Cargo.lock 記錄實際使用的精確版本
+          </button>
+          <button>Cargo.lock 是 Cargo.toml 的備份</button>
+          <button>
+            Cargo.toml 是給人讀的，Cargo.lock 是給 crates.io 讀的
+          </button>
+          <button>兩個檔案的內容完全一樣，只是格式不同</button>
+        </div>
+        <div
+          class="feedback"
+          data-ok="答對了。Cargo.toml 說「我要 4.x.y」，Cargo.lock 說「上次用的是 4.5.23」——這確保團隊每個人編譯出相同的結果。"
+          data-bad="再看一次第 8 節：Cargo.toml 寫的是版本範圍，Cargo.lock 記錄的是精確版本。兩者扮演的角色不同。"
+        ></div>
+      </div>
+
+      <div class="win">
+        <div class="kicker">這一課的成果</div>
+        你把 <code>hello_cli</code>
+        從一個只用 <code>std</code> 的專案，變成了一個會從 crates.io
+        拉依賴的真實 Rust 專案。
+        <br /><br />
+        三個你現在知道怎麼用的工具：
+        <ul>
+          <li><code>cargo add</code>——加入依賴</li>
+          <li><code>docs.rs</code>——讀外部 crate 的文件</li>
+          <li>
+            <code>clap</code> derive API——用一個 struct 描述命令列介面
+          </li>
+        </ul>
+        <br />
+        下一課會再加一個 crate——<code>serde_json</code>——把手寫的
+        <code>JsonFormatter</code> 換成結構化序列化。
+        <br /><br />
+        速查表：<a href="../reference/cargo-dependencies.html"
+          >Cargo 依賴管理速查</a
+        >。
+      </div>
+
+      <p class="source">
+        主要參考資料：
+        <a
+          href="https://doc.rust-lang.org/cargo/guide/dependencies.html"
+          target="_blank"
+          >The Cargo Book — Specifying Dependencies</a
+        >、
+        <a href="https://docs.rs/clap/latest/clap/" target="_blank"
+          >clap 文件 (docs.rs)</a
+        >。
+      </p>
+
+      <nav class="lesson-links">
+        <a href="0036-impl-trait.html">
+          &larr; 上一課：impl Trait — 把「具體型別」藏起來
+        </a>
+        <a href="0038-serde.html">下一課：Serde — 結構化序列化 &rarr;</a>
+      </nav>
+
+      <p class="ask-agent">
+        卡住了、或有任何看不懂的地方，直接問我（你的 AI 教學助手）就好 ——
+        隨時可以打斷這個流程提問。
+      </p>
+    </main>
+  </body>
+</html>

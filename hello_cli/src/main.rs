@@ -2,46 +2,46 @@ mod errors;
 mod formatter;
 mod report;
 
+use clap::Parser;
 use errors::AppError;
-use std::env;
 
 use formatter::make_formatter;
 use report::load_report;
 
+/// 分析原始碼檔案的小工具
+#[derive(Parser)]
+struct Cli {
+    /// 要分析的檔案
+    filename: Option<String>,
+
+    /// 只印行數摘要
+    #[arg(long)]
+    count_only: bool,
+
+    /// 只印詞頻統計
+    #[arg(long)]
+    words: bool,
+
+    /// 詞頻篩選門檻
+    #[arg(long, default_value_t = 1)]
+    min: usize,
+
+    /// 輸出格式 (plain / json)
+    #[arg(long, default_value = "plain")]
+    format: String,
+
+    /// 搜尋包含此關鍵字的行
+    #[arg(long)]
+    grep: Option<String>,
+}
+
 fn run() -> Result<(), AppError> {
-    let mut filename: Option<String> = None;
-    let mut count_only: bool = false;
-    let mut words_count_only: bool = false;
-    let mut min: usize = 1;
-    let mut args = env::args().skip(1);
-    let mut format = String::from("plain");
-    let mut grep: Option<String> = None;
+    let cli = Cli::parse();
 
-    while let Some(arg) = args.next() {
-        match arg.as_str() {
-            "--count-only" => count_only = true,
-            "--words" => words_count_only = true,
-            "--min" => match args.next() {
-                Some(value) => min = value.parse()?,
-                None => return Err(AppError::MissingValue("--min".to_string())),
-            },
-            "--format" => match args.next() {
-                Some(value) => format = value,
-                None => return Err(AppError::MissingValue("--format".to_string())),
-            },
-            "--grep" => match args.next() {
-                Some(value) => grep = Some(value),
-                None => return Err(AppError::MissingValue("--grep".to_string())),
-            },
-            _ if arg.starts_with("-") => return Err(AppError::UnknownFlag(arg)),
-            _ => filename = Some(arg),
-        }
-    }
+    let formatter = make_formatter(&cli.format)
+        .ok_or_else(|| AppError::UnknownFlag(format!("--format {}", cli.format)))?;
 
-    let formatter = make_formatter(&format)
-        .ok_or_else(|| AppError::UnknownFlag(format!("--format {}", format)))?;
-
-    let filename = match filename {
+    let filename = match cli.filename {
         Some(name) => name,
         None => {
             println!("用法：cargo run -- [--count-only] <檔名>");
@@ -51,18 +51,18 @@ fn run() -> Result<(), AppError> {
 
     let report = load_report(&filename)?;
 
-    if let Some(pattern) = &grep {
+    if let Some(pattern) = &cli.grep {
         for line in report.matching_lines(pattern) {
             println!("{}", line);
         }
         return Ok(());
     }
 
-    if words_count_only {
+    if cli.words {
         let counts = report.word_counts();
         let mut pairs: Vec<_> = counts.iter().collect();
 
-        pairs.retain(|pair| *pair.1 >= min);
+        pairs.retain(|pair| *pair.1 >= cli.min);
         pairs.sort_by(|a, b| b.1.cmp(a.1));
 
         for (word, count) in pairs {
@@ -71,7 +71,7 @@ fn run() -> Result<(), AppError> {
         return Ok(());
     }
 
-    if count_only {
+    if cli.count_only {
         println!("{}", report.summary());
     } else {
         println!("{}", formatter.format_report(&report));

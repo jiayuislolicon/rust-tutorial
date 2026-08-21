@@ -1,0 +1,70 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="UTF-8">
+<title>Reference · Cargo 依賴管理</title>
+<link rel="stylesheet" href="../assets/style.css">
+</head>
+<body>
+<main>
+<div class="kicker">Reference · 速查表</div>
+<h1>Cargo 依賴管理</h1>
+
+<h2>加入依賴</h2>
+<pre><code>cargo add clap                       # 加入最新版
+cargo add clap --features derive     # 加入並開啟 feature
+cargo add serde@1.0                  # 指定版本範圍
+cargo remove clap                    # 移除依賴</code></pre>
+
+<h2>Cargo.toml [dependencies] 語法</h2>
+<pre><code>[dependencies]
+# 簡單寫法——只指定版本
+serde = "1.0"
+
+# 完整寫法——需要 feature 時
+clap = { version = "4", features = ["derive"] }
+
+# 版本範圍語意（semver）
+# "4"       → ≥4.0.0, &lt;5.0.0
+# "4.5"     → ≥4.5.0, &lt;5.0.0
+# "4.5.23"  → ≥4.5.23, &lt;5.0.0
+# "=4.5.23" → 精確鎖定這個版本</code></pre>
+
+<h2>Cargo.toml vs Cargo.lock</h2>
+<table>
+<thead>
+<tr><th></th><th>Cargo.toml</th><th>Cargo.lock</th></tr>
+</thead>
+<tbody>
+<tr><td>內容</td><td>你想要的版本範圍</td><td>實際使用的精確版本</td></tr>
+<tr><td>誰寫的</td><td>你</td><td>Cargo 自動產生</td></tr>
+<tr><td>要 commit 嗎？</td><td>永遠要</td><td>二進位 crate：要；library crate：通常不要</td></tr>
+</tbody>
+</table>
+
+<h2>Feature（功能旗標）</h2>
+<pre><code># 開啟 feature
+clap = { version = "4", features = ["derive"] }
+
+# 開啟多個 feature
+serde = { version = "1", features = ["derive", "rc"] }</code></pre>
+<p>Feature 是 crate 作者定義的可選功能。沒開啟的 feature 不會被編譯。</p>
+
+<h2>常用指令</h2>
+<pre><code>cargo add &lt;crate&gt;         # 加入依賴
+cargo remove &lt;crate&gt;      # 移除依賴
+cargo update              # 在 Cargo.toml 的範圍內升級到最新版
+cargo tree                # 顯示依賴樹
+cargo doc --open          # 產生並打開你的專案 + 所有依賴的文件</code></pre>
+
+<h2>查文件</h2>
+<ul>
+<li><strong>docs.rs</strong>：<code>https://docs.rs/&lt;crate名稱&gt;</code> — 所有 crates.io 上的 crate 自動產生的 API 文件。</li>
+<li><strong>crates.io</strong>：<code>https://crates.io/crates/&lt;crate名稱&gt;</code> — 下載量、版本歷史、原始碼連結。</li>
+<li><strong>cargo doc --open</strong>：在本地產生你的專案和所有依賴的文件，離線也能看。</li>
+</ul>
+
+<p class="source">來源：<a href="https://doc.rust-lang.org/cargo/guide/dependencies.html" target="_blank">The Cargo Book — Specifying Dependencies</a></p>
+</main>
+</body>
+</html>

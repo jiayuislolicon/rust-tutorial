@@ -289,3 +289,21 @@ Written as `fn foo() -> impl Iterator<Item = i32>`. Means: "this function return
 
 **`impl Trait`（參數位置）**:
 Written as `fn foo(val: impl Display)`. Syntactic sugar for a generic parameter: equivalent to `fn foo<T: Display>(val: T)`. Each call site can pass a different concrete type. Prefer this shorthand when the type parameter appears only once and you don't need to refer to it elsewhere in the signature. See [[Trait bound]], [[Lesson 36]].
+
+**External crate（外部 crate）**:
+A crate published on [crates.io](https://crates.io/) — the Rust ecosystem's public package registry. Contrast with `std`, which ships with the Rust toolchain. To use one, add it to `[dependencies]` in `Cargo.toml` (or run `cargo add <name>`). Cargo downloads, compiles, and links it automatically. See [[Lesson 37]].
+
+**`cargo add`**:
+A Cargo subcommand that adds a dependency to `Cargo.toml`. `cargo add clap --features derive` looks up the latest version on crates.io, writes the entry into `[dependencies]`, and enables the specified features. The inverse is `cargo remove <crate>`.
+
+**Cargo.lock**:
+An auto-generated file recording the exact version of every dependency (and transitive dependency) used in a build. `Cargo.toml` specifies a version *range* (e.g. `"4"`); `Cargo.lock` pins the *precise* version (e.g. `4.5.23`). For binary crates, commit it to version control so every clone builds identically. For library crates, it is usually `.gitignore`d.
+
+**Feature（Cargo feature）**:
+An optional, compile-time flag defined by a crate author. Disabled features are not compiled, reducing build time and binary size. Enabled in `Cargo.toml` with `features = ["derive"]` or via `cargo add <crate> --features <name>`. Example: `clap`'s `derive` feature enables the `#[derive(Parser)]` proc-macro API.
+
+**docs.rs**:
+A website that automatically builds and hosts API documentation for every crate published to crates.io. URL pattern: `https://docs.rs/<crate>`. Uses the same `rustdoc` tool as `std` documentation, so the format is identical.
+
+**clap**:
+The most widely used command-line argument parsing crate in the Rust ecosystem. With the `derive` feature enabled, you define a struct with `#[derive(Parser)]` and annotate fields with `#[arg(...)]` — clap generates the parser, `--help` output, and error messages automatically. Field types map directly to parsing behaviour: `bool` → flag, `Option<T>` → optional, `T` with `default_value` → has a default. See [[Lesson 37]].
